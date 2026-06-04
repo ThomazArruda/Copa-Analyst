@@ -110,7 +110,7 @@ with st.sidebar:
 
     pagina = st.radio(
         "Navegação",
-        ["Jogos do Dia", "Análise Completa", "Digest Email", "Atualizar Dados"],
+        ["Jogos do Dia", "Análise Completa", "Digest Email", "Calibração", "Atualizar Dados"],
         label_visibility="collapsed",
     )
 
@@ -376,6 +376,117 @@ elif pagina == "Digest Email":
 # ---------------------------------------------------------------------------
 # Página: Atualizar Dados
 # ---------------------------------------------------------------------------
+
+elif pagina == "Calibração":
+    st.title("Painel de Calibração")
+    st.caption(
+        "Avalia a qualidade das previsões usando Brier score e log-loss. "
+        "Apenas relatórios marcados como **oficiais** entram nesta análise (PRD 9.1)."
+    )
+
+    repo = get_repo()
+
+    # Atualizar resultados antes de calcular
+    col_upd, _ = st.columns([1, 3])
+    if col_upd.button("Atualizar resultados agora"):
+        from src.dados.resultados import atualizar_resultados_automatico
+        with st.spinner("Buscando resultados..."):
+            r = atualizar_resultados_automatico(repo)
+        st.success(f"{r['jogos']} jogos, {r['previsoes']} previsões atualizadas.")
+        st.cache_data.clear()
+
+    # Entrada manual de resultado
+    with st.expander("Inserir resultado manualmente"):
+        todos_jogos = listar_jogos_copa26()
+        jogos_sem_resultado = [
+            j for j in todos_jogos
+            if j["placar_m"] is None
+        ]
+        if not jogos_sem_resultado:
+            st.info("Todos os jogos com relatório oficial já têm resultado.")
+        else:
+            opcoes_manual = {
+                f"{j['data']} | {j['mandante']} × {j['visitante']}": j["id"]
+                for j in jogos_sem_resultado
+            }
+            sel = st.selectbox("Jogo", list(opcoes_manual.keys()), key="manual_jogo")
+            c1, c2 = st.columns(2)
+            gols_m = c1.number_input("Gols mandante", min_value=0, max_value=20, value=0)
+            gols_v = c2.number_input("Gols visitante", min_value=0, max_value=20, value=0)
+            if st.button("Salvar resultado manual"):
+                from src.dados.resultados import preencher_resultado_real_jogo
+                jid = opcoes_manual[sel]
+                n = preencher_resultado_real_jogo(jid, int(gols_m), int(gols_v), repo)
+                st.success(f"Resultado salvo. {n} previsões atualizadas.")
+                st.cache_data.clear()
+
+    st.divider()
+
+    # Calcular e exibir métricas
+    from src.validacao.calibracao import calcular_calibracao, pontos_calibracao
+
+    painel = calcular_calibracao(repo)
+
+    # Avisos de ruído e leakage (PRD 9.2 e 9.5)
+    if painel.aviso_ruido:
+        st.warning(f"Aviso estatístico: {painel.aviso_ruido}")
+    if painel.alerta_leakage:
+        st.error(f"Possível data leakage: {painel.alerta_leakage}")
+
+    col1, col2 = st.columns(2)
+    col1.metric("Relatórios oficiais", painel.total_relatorios_oficiais)
+    col2.metric("Previsões avaliadas", painel.total_previsoes_avaliadas)
+
+    if painel.total_previsoes_avaliadas == 0:
+        st.info(
+            "Nenhuma previsão com resultado disponível ainda. "
+            "O painel ficará ativo após os primeiros jogos da Copa."
+        )
+    else:
+        st.markdown("### Métricas por mercado")
+        st.caption(
+            "Brier score: 0.0 = perfeito, 0.25 = referência (sempre prever 50%). "
+            "Log-loss: menor é melhor. Acerto binário é só display — não é a métrica. (PRD 9.3)"
+        )
+
+        for m in painel.por_mercado:
+            ruido_tag = " *(ruído — N pequeno)*" if m.ruido_alto else ""
+            leakage_tag = " :red[VERIFICAR LEAKAGE]" if m.alerta_leakage else ""
+
+            with st.expander(
+                f"**{m.mercado}** — N={m.n} | Brier={m.brier_score:.3f} | "
+                f"Log-loss={m.log_loss:.3f}{ruido_tag}{leakage_tag}"
+            ):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Brier Score", f"{m.brier_score:.3f}",
+                          help="0=perfeito, 0.25=baseline (sempre 50%)")
+                c2.metric("Log-loss", f"{m.log_loss:.3f}",
+                          help="Menor é melhor. Penaliza confiança errada.")
+                c3.metric("Acerto binário (display)", f"{m.acerto_binario:.0%}",
+                          help="Apenas para display. Não é métrica de qualidade. (PRD 9.3)")
+
+                if m.ruido_alto:
+                    st.caption(
+                        f"Com {m.n} amostras, estes números têm alta variância estatística. "
+                        "Não tire conclusões até ter pelo menos 20 previsões por mercado."
+                    )
+
+        # Gráfico de calibração
+        pontos = pontos_calibracao(repo)
+        if len(pontos) >= 3:
+            st.markdown("### Gráfico de Calibração")
+            st.caption(
+                "Ideal: pontos na diagonal (probabilidade prevista = frequência real). "
+                "Pontos acima = modelo sub-confiante. Abaixo = super-confiante."
+            )
+            import pandas as pd
+            df = pd.DataFrame(pontos)
+            df["diagonal"] = df["prob_prevista"]
+            st.line_chart(
+                df.set_index("prob_prevista")[["freq_real", "diagonal"]],
+                use_container_width=True,
+            )
+
 
 elif pagina == "Atualizar Dados":
     st.title("Atualizar Dados")
