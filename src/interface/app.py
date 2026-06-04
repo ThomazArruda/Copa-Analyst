@@ -4,10 +4,16 @@ Uso: streamlit run src/interface/app.py
 """
 
 import os
+import sys
 import json
 import logging
 from datetime import date, datetime, timezone
 from pathlib import Path
+
+# Garante que a raiz do projeto está no sys.path ao rodar via streamlit run
+_root = Path(__file__).resolve().parent.parent.parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -137,7 +143,7 @@ if pagina == "Jogos do Dia":
     with col1:
         data_sel = st.date_input(
             "Data",
-            value=date.today(),
+            value=max(date(2026, 6, 11), min(date.today(), date(2026, 7, 19))),
             min_value=date(2026, 6, 11),
             max_value=date(2026, 7, 19),
         )
@@ -211,6 +217,11 @@ elif pagina == "Análise Completa":
                 break
 
     sel_label = st.selectbox("Selecionar jogo", opcoes_list, index=idx_default)
+
+    if not opcoes_list or sel_label is None:
+        st.info("Nenhum jogo disponível para análise.")
+        st.stop()
+
     jogo_id = opcoes[sel_label]
 
     # Preview rápida
@@ -316,7 +327,7 @@ elif pagina == "Digest Email":
     with col1:
         data_digest = st.date_input(
             "Data do digest",
-            value=date.today(),
+            value=max(date(2026, 6, 11), min(date.today(), date(2026, 7, 19))),
             min_value=date(2026, 6, 11),
             max_value=date(2026, 7, 19),
         )
