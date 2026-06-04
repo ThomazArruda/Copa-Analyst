@@ -57,6 +57,25 @@ def _get_repo() -> Repositorio:
 # Ingestão inicial (rodar uma vez)
 # ---------------------------------------------------------------------------
 
+def _corrigir_campo_neutro_anfitrioes(repo: Repositorio):
+    """
+    Copa 2026: México, Canadá e EUA jogam em seus países → campo_neutro=0.
+    Todos os demais jogos mantêm campo_neutro=1 (PRD 7.1).
+    """
+    anfitrioes = {"Mexico", "Canada", "United States"}
+    jogos = repo.listar_jogos_copa26()
+    corrigidos = 0
+    for jogo in jogos:
+        time_m = repo.buscar_time(jogo.time_mandante_id)
+        if time_m and time_m.nome in anfitrioes and jogo.campo_neutro == 1:
+            with repo._conn() as conn:
+                conn.execute(
+                    "UPDATE jogos SET campo_neutro = 0 WHERE id = ?", (jogo.id,)
+                )
+            corrigidos += 1
+    logger.info("campo_neutro=0 aplicado para %d jogos de anfitrioes", corrigidos)
+
+
 def ingestao_inicial(pular_api_football: bool = False) -> dict:
     """
     Popula o banco com todos os dados históricos.
@@ -80,6 +99,9 @@ def ingestao_inicial(pular_api_football: bool = False) -> dict:
     # 2. Copa 2022 via openfootball (estrutura + resultados)
     logger.info("--- [2/5] Copa 2022 — openfootball ---")
     relatorio["copa_2022_fixtures"] = of.ingerir_copa2022()
+
+    # Marcar campo_neutro=0 para anfitriões jogando em casa (Copa 2026)
+    _corrigir_campo_neutro_anfitrioes(repo)
 
     # 3. Rating prior — Elo calculado sobre jogos históricos já ingeridos
     logger.info("--- [3/5] Rating prior --- Elo calculado sobre historico ---")
