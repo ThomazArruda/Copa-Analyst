@@ -1,0 +1,22 @@
+-- Seed: principais universidades brasileiras
+INSERT INTO institutions (name, acronym, city, state, verified) VALUES
+  ('Universidade de São Paulo', 'USP', 'São Paulo', 'SP', true),
+  ('Universidade Estadual de Campinas', 'UNICAMP', 'Campinas', 'SP', true),
+  ('Universidade Federal do Rio de Janeiro', 'UFRJ', 'Rio de Janeiro', 'RJ', true),
+  ('Universidade Federal de Minas Gerais', 'UFMG', 'Belo Horizonte', 'MG', true),
+  ('Universidade Federal do Rio Grande do Sul', 'UFRGS', 'Porto Alegre', 'RS', true),
+  ('Universidade Federal de Santa Catarina', 'UFSC', 'Florianópolis', 'SC', true),
+  ('Universidade Federal do Paraná', 'UFPR', 'Curitiba', 'PR', true),
+  ('Universidade Federal de Pernambuco', 'UFPE', 'Recife', 'PE', true),
+  ('Universidade Federal da Bahia', 'UFBA', 'Salvador', 'BA', true),
+  ('Universidade Federal do Ceará', 'UFC', 'Fortaleza', 'CE', true),
+  ('Universidade Federal de Goiás', 'UFG', 'Goiânia', 'GO', true),
+  ('Universidade Federal Fluminense', 'UFF', 'Niterói', 'RJ', true),
+  ('Universidade Federal de São Paulo', 'UNIFESP', 'São Paulo', 'SP', true),
+  ('Universidade Estadual Paulista', 'UNESP', 'São Paulo', 'SP', true),
+  ('Pontifícia Universidade Católica de São Paulo', 'PUC-SP', 'São Paulo', 'SP', false),
+  ('Pontifícia Universidade Católica do Rio de Janeiro', 'PUC-Rio', 'Rio de Janeiro', 'RJ', false),
+  ('Fundação Getulio Vargas', 'FGV', 'São Paulo', 'SP', false),
+  ('Instituto Tecnológico de Aeronáutica', 'ITA', 'São José dos Campos', 'SP', true),
+  ('Universidade Federal do ABC', 'UFABC', 'Santo André', 'SP', true),
+  ('Universidade Estadual do Rio de Janeiro', 'UERJ', 'Rio de Janeiro', 'RJ', true);
