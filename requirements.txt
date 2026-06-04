@@ -1,0 +1,23 @@
+# Copa Analyst — Dependências
+# Instalar com: pip install -r requirements.txt
+
+# IA
+anthropic>=0.40.0
+
+# Modelo estatístico
+numpy>=2.0.0
+scipy>=1.14.0
+statsmodels>=0.14.0
+
+# Validação de saída da IA
+pydantic>=2.9.0
+
+# Interface
+streamlit>=1.40.0
+
+# Utilitários
+requests>=2.32.0
+python-dotenv>=1.0.0
+
+# Dev / testes
+pytest>=8.0.0
