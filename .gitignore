@@ -1,0 +1,42 @@
+# Ambiente Python
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Variáveis de ambiente (nunca commitar)
+.env
+.env.local
+
+# Banco de dados e cache local
+dados/
+*.db
+*.sqlite
+*.sqlite3
+
+# Relatórios gerados (artefatos de runtime, não código)
+relatorios/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
