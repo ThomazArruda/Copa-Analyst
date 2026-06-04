@@ -173,6 +173,27 @@ Estratégia em dois passos:
 
 ---
 
+## Decisão 11 — Arquitetura de Fontes de Dados (100% gratuita) ✅ DECIDIDO
+
+**Decisão:** usar combinação de fontes gratuitas em camadas. Nenhum pagamento.
+
+| Dado | Fonte | Método |
+|---|---|---|
+| Calendário Copa 2026 (104 fixtures) | openfootball/worldcup.json (GitHub) | HTTP GET raw JSON |
+| **Resultados Copa 2026 automáticos** | **TheSportsDB free API** | `eventsseason?id=4429&s=2026` — atualiza conforme jogos terminam |
+| Forma qualificatórias 2025/2026 (W/D/L + gols) | Wikipedia (scraping) | `requests` + `BeautifulSoup` nas 6 páginas de confederação |
+| Stats históricas (escanteios, chutes, faltas, cartões) | API-Football free tier | Copa 2022 + eliminatórias 2022-2024 (temporadas desbloqueadas) |
+| Rating prior | eloratings.net | HTTP GET CSV |
+| Escalação, lesões, árbitro, notícias | Claude API + web search | Fase 3 |
+
+**Por que TheSportsDB para Copa 2026:** confirmado que retorna fixtures com `intHomeScore`/`intAwayScore` — campos ficam `null` antes do jogo e preenchem automaticamente após o apito final. Brasil 6×2 Panamá (31/mai/2026) já aparece no endpoint `eventslast`. Zero entrada manual.
+
+**Por que Wikipedia para forma 2025/2026:** confirmado que as páginas de qualificatórias (CONMEBOL, UEFA, CONCACAF, AFC, CAF) têm tabelas HTML com todos os 90+ jogos por confederação, com data, times e placar — estrutura consistente e scrapeável. Cobre até set/2025 (última rodada das qualificatórias).
+
+**Gap declarado:** estatísticas granulares (escanteios, chutes, faltas) dos jogos de 2025 não disponíveis gratuitamente. Averages para mercados secundários calculadas com dados 2022-2024. O relatório declara esse lapso (PRD 2.4).
+
+---
+
 ## Log de Mudanças
 
 | Data | Decisão | O quê mudou |
@@ -180,3 +201,4 @@ Estratégia em dois passos:
 | 2026-06-04 | Todas | Criação inicial do documento |
 | 2026-06-04 | 1 | Decidido: eloratings.net + Elo de openfootball. Club Elo descartado (não cobre seleções nacionais) |
 | 2026-06-04 | 2 | Decidido: free tier bloqueia 2025/2026. Copa 2026 via openfootball. Stats disponíveis para 2022-2024 |
+| 2026-06-04 | 11 | Decidido: arquitetura de fontes 100% gratuita (ver Decisão 11) |

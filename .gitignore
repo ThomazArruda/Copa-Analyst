@@ -13,8 +13,8 @@ build/
 .env
 .env.local
 
-# Banco de dados e cache local
-dados/
+# Banco de dados e cache local (apenas o diretório raiz, não src/dados/)
+/dados/
 *.db
 *.sqlite
 *.sqlite3
