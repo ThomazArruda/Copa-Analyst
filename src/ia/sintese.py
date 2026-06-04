@@ -47,6 +47,7 @@ def _montar_contexto(
     previsao_dc: PrevisaoCalculada,
     mercados_sec: dict,
     pesquisa: dict,
+    repo: "Repositorio" = None,
 ) -> str:
     """
     Monta o bloco de contexto que vai no prompt de síntese.
@@ -148,10 +149,10 @@ Médias brutas {time_v.nome}:
 ## FORMA RECENTE
 
 {time_m.nome} (últimos 5 com resultado):
-{_resumir_forma(pacote['forma_copa']['mandante'] + pacote['forma_recente']['mandante'], time_m.id if time_m else 0, __import__('builtins'))}
+{_resumir_forma(pacote['forma_copa']['mandante'] + pacote['forma_recente']['mandante'], time_m.id if time_m else 0, repo)}
 
 {time_v.nome} (últimos 5 com resultado):
-{_resumir_forma(pacote['forma_copa']['visitante'] + pacote['forma_recente']['visitante'], time_v.id if time_v else 0, __import__('builtins'))}
+{_resumir_forma(pacote['forma_copa']['visitante'] + pacote['forma_recente']['visitante'], time_v.id if time_v else 0, repo)}
 
 ---
 
@@ -281,6 +282,7 @@ def analisar_jogo(jogo_id: int, repo: Repositorio) -> dict:
     contexto = _montar_contexto(
         jogo, time_m, time_v,
         pacote, previsao_dc, mercados_sec, pesquisa,
+        repo=repo,
     )
 
     # 6. Chamar Claude
