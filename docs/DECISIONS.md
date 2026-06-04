@@ -4,68 +4,80 @@ Registro das decisões tomadas e das pendências que precisam ser resolvidas ant
 
 ---
 
-## Decisão 1 — Fonte do Rating Prior ⚠️ PENDENTE (bloqueia Fase 1)
+## Decisão 1 — Fonte do Rating Prior ✅ DECIDIDO
 
 **Questão:** qual a fonte de força base das seleções para ancorar o Dixon-Coles?
 
-**Opções avaliadas:**
+**Validado na Fase 0:** Club Elo (`api.clubelo.com/<codigo>`) **não retorna dados para seleções nacionais** — a API retornou apenas o header CSV sem linhas de dados. Descartado.
 
-### Opção A: Elo próprio a partir do openfootball histórico
-- **Como:** calcular Elo K-factor a partir de todos os resultados de Copa do Mundo disponíveis no openfootball (1930–2022 + eliminatórias, se disponíveis)
-- **Prós:** controle total, rastreável, sem dependência externa além do openfootball (que já é uma dependência)
-- **Contras:** mais trabalho de implementação; eliminatórias têm strength-of-schedule muito diferente entre confederações, o que complica a escala comum; Copas antigas têm pouca informação (poucos times, formato diferente)
-- **Implementação estimada:** `src/modelos/rating_prior.py` ~100–150 linhas
+**Decisão: World Football Elo Ratings (eloratings.net) + Elo calculado de openfootball.**
 
-### Opção B: Ingestão de ranking público
-Três sub-opções:
+Estratégia em dois passos:
 
-| Fonte | URL | Disponibilidade | Observações |
-|---|---|---|---|
-| **Club Elo (seleções)** | clubelo.com/api | Grátis, API simples | Cobre seleções nacionais com Elo histórico |
-| **FiveThirtyEight SPI** | github.com/fivethirtyeight/data | Grátis, CSV histórico | SPI (Soccer Power Index); FTT encerrou cobertura de futebol em 2023, dados até lá |
-| **Ranking oficial FIFA** | fifa.com/rankings | HTML scraping ou CSV | Ranking oficial; metodologia diferente de Elo; mais fácil de explicar para o grupo |
+1. **Prior inicial:** baixar os ratings atuais de `eloratings.net` (cobre todas as seleções, metodologia pública, inclui todos os jogos internacionais A desde 1872). Grátis, sem chave, atualizados continuamente. Endpoint: `eloratings.net/World` ou download do histórico completo.
 
-- **Prós:** mais rápido de implementar; rankin FIFA tem credibilidade fácil de explicar
-- **Contras:** dependência externa; FIFA ranking é pontual (não dá série histórica para recalcular); FTT SPI está desatualizado desde 2023
+2. **Ajuste com dados disponíveis:** calcular ajuste Elo sobre os jogos que o API-Football free tier entrega (eliminatórias 2022, Copa 2022) para capturar forma recente dentro das janelas acessíveis.
 
-### Opção C: Híbrido
-- Usar ranking FIFA como prior inicial de força relativa entre confederações
-- Ajustar com Elo calculado sobre jogos disponíveis nos últimos X anos
-- Maior esforço, mais robusto
+**Por que não FIFA Ranking:** a metodologia do ranking FIFA (pontos por resultado × importância do jogo × força do adversário) não é Elo — não é diretamente comparável em escala nem interpretável como probabilidade de vitória. Eloratings.net usa escala Elo real, que alimenta diretamente o Dixon-Coles.
 
-**Decisão:** `[ ] PENDENTE — decidir na Fase 0`
-
-**Recomendação tentativa:** Opção B (Club Elo ou ranking FIFA) para chegar rápido ao Jogo 1; avaliar Opção A para v2 se o projeto continuar pós-Copa.
+**Implementação:** `src/modelos/rating_prior.py` — baixar CSV do eloratings.net na inicialização, cachear no SQLite.
 
 ---
 
-## Decisão 2 — Disponibilidade Real da API-Football Free Tier ⚠️ PENDENTE (bloqueia Fases 1 e 2)
+## Decisão 2 — Disponibilidade Real da API-Football Free Tier ✅ DECIDIDO (validado na Fase 0)
 
-**Questão:** quais dados o free tier realmente entrega para seleções?
+**Restrição crítica descoberta:** o free tier bloqueia seasons 2025 e 2026 com mensagem explícita: *"Free plans do not have access to this season, try from 2022 to 2024."*
 
-**O que o PRD (Seção 4.4) documenta como incerto:**
-- Plano grátis limita as **temporadas disponíveis** (não apenas o volume de requests)
-- Amistosos têm cobertura de estatísticas **inconsistente**
-- xG: assumido majoritariamente ausente — o modelo não depende dele
+### O que está disponível
 
-**O que precisa ser confirmado empiricamente (Fase 0):**
+| Dado | League | Season | Status | Qtd |
+|---|---|---|---|---|
+| Copa do Mundo 2022 — fixtures | 1 | 2022 | **OK** | 64 jogos |
+| Copa do Mundo 2022 — estatísticas de partida | 1 | 2022 | **OK** | escanteios, chutes, faltas, posse, cartões amarelos |
+| Copa do Mundo 2026 — fixtures | 1 | 2026 | **BLOQUEADO** | — |
+| Eliminatórias CONMEBOL 2022 | 34 | 2022 | **OK** | 90 jogos + stats |
+| Eliminatórias UEFA 2024 | 32 | 2024 | **OK** | 204 jogos + stats |
+| Eliminatórias CONCACAF 2022 | 31 | 2022 | **OK** | 122 jogos |
+| Eliminatórias Ásia 2022 | 30 | 2022 | **OK** | 233 jogos |
+| Eliminatórias África 2022 | 29 | 2022 | **OK** | 158 jogos |
+| Eliminatórias 2026 (todas) | — | 2026 | **BLOQUEADO** | — |
+| Amistosos 2024 | 10 | 2024 | **OK (parcial)** | 394 jogos, stats inconsistentes |
+| Amistosos 2025+ | 10 | 2025+ | **BLOQUEADO** | — |
 
-| Dado | Endpoint | Status |
+### Estatísticas disponíveis (Copa 2022 + Eliminatórias)
+
+| Stat | Status |
+|---|---|
+| Escanteios | **Sim** |
+| Chutes totais | **Sim** |
+| Chutes no alvo | **Sim** |
+| Faltas | **Sim** |
+| Posse de bola | **Sim** |
+| Cartões amarelos | **Sim** |
+| Cartões vermelhos | campo presente, geralmente `null` (evento raro — esperado) |
+| xG | **Não** (confirmado, como previsto no PRD 5.3) |
+
+### IDs de league confirmados
+
+| Confederação | League ID | Season mais recente disponível |
 |---|---|---|
-| Calendário Copa 2026 | `/fixtures?league=1&season=2026` | ⬜ Validar |
-| Resultados Copa 2022 | `/fixtures?league=1&season=2022` | ⬜ Validar |
-| Stats de partida Copa 2022 (escanteios/chutes/cartões) | `/fixtures/statistics?fixture=<id>` | ⬜ Validar |
-| Forma recente — Eliminatórias CONMEBOL 2026 | `/fixtures?league=29&season=2025` | ⬜ Validar |
-| Forma recente — Eliminatórias UEFA 2026 | `/fixtures?league=34&season=2025` | ⬜ Validar |
-| Amistosos internacionais | `/fixtures?league=10` | ⬜ Validar (cobertura suspeita) |
-| Stats de amistosos | `/fixtures/statistics?fixture=<id_amistoso>` | ⬜ Validar |
+| Copa do Mundo | 1 | 2022 |
+| CONMEBOL Eliminatórias | 34 | 2022 |
+| UEFA Eliminatórias | 32 | 2024 |
+| CONCACAF Eliminatórias | 31 | 2022 |
+| Ásia Eliminatórias | 30 | 2022 |
+| África Eliminatórias | 29 | 2022 |
+| Amistosos internacionais | 10 | 2024 (stats inconsistentes — usar só resultado) |
 
-**Impacto da resposta:**
-- Se estatísticas de partida estiverem disponíveis para Copa 2022 + eliminatórias → mercados 7.2 parcialmente calculáveis
-- Se estatísticas ausentes para seleções → todos os mercados secundários viram puramente qualitativos
-- O modelo Dixon-Coles **não depende** das stats — roda em gols crus. A questão é só para escanteios/cartões/chutes
+### Implicação crítica para o modelo
 
-**Decisão:** `[ ] PENDENTE — resultado da Fase 0 preenche esta seção`
+**Todos os jogos da Copa 2026 são efetivamente cold start.** O free tier não entrega o calendário da Copa 2026 nem as eliminatórias do ciclo 2026. A forma recente máxima disponível é até 2024 — lapso de ~1 ano até o torneio.
+
+**Decisão de mitigação:**
+- Calendário Copa 2026: **openfootball** (grátis, domínio público)
+- Forma recente: Copa 2022 + eliminatórias 2022–2024 disponíveis
+- Relatório deve declarar o lapso de dados explicitamente para todos os jogos (PRD 2.4)
+- Amistosos 2024: usar apenas resultado (W/D/L) para forma, não stats detalhadas
 
 ---
 
@@ -166,3 +178,5 @@ Três sub-opções:
 | Data | Decisão | O quê mudou |
 |---|---|---|
 | 2026-06-04 | Todas | Criação inicial do documento |
+| 2026-06-04 | 1 | Decidido: eloratings.net + Elo de openfootball. Club Elo descartado (não cobre seleções nacionais) |
+| 2026-06-04 | 2 | Decidido: free tier bloqueia 2025/2026. Copa 2026 via openfootball. Stats disponíveis para 2022-2024 |
