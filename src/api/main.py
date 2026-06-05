@@ -312,6 +312,93 @@ def calibracao():
 
 
 # ---------------------------------------------------------------------------
+# /api/jogos/{id}/gerar-relatorio — dispara análise completa com Claude
+# ---------------------------------------------------------------------------
+
+_gerando: dict[int, bool] = {}
+
+@app.post("/api/jogos/{jogo_id}/gerar-relatorio")
+def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks):
+    if _gerando.get(jogo_id):
+        return {"ok": False, "msg": "Análise já em andamento para este jogo."}
+    _gerando[jogo_id] = True
+
+    def _run():
+        try:
+            from src.ia.sintese import analisar_jogo
+            repo = get_repo()
+            analisar_jogo(jogo_id, repo)
+        except Exception:
+            logger.exception("Erro na análise do jogo %d", jogo_id)
+        finally:
+            _gerando.pop(jogo_id, None)
+
+    background_tasks.add_task(_run)
+    return {"ok": True, "msg": "Análise iniciada. Aguarde ~30–60s e recarregue."}
+
+
+@app.get("/api/jogos/{jogo_id}/relatorio")
+def buscar_relatorio(jogo_id: int):
+    import sqlite3
+    db_path = os.getenv("COPA_DB_PATH", "dados/copa_analyst.db")
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("""
+            SELECT id, jogo_id, gerado_em, prompt_versao, modelo_versao,
+                   conteudo, fatores_avaliados, fatores_ausentes, eh_relatorio_oficial
+            FROM relatorios
+            WHERE jogo_id = ?
+            ORDER BY gerado_em DESC
+            LIMIT 1
+        """, (jogo_id,)).fetchone()
+
+        historico = conn.execute("""
+            SELECT id, gerado_em, eh_relatorio_oficial
+            FROM relatorios
+            WHERE jogo_id = ?
+            ORDER BY gerado_em DESC
+        """, (jogo_id,)).fetchall()
+        conn.close()
+
+        gerando = _gerando.get(jogo_id, False)
+
+        if row is None:
+            return {"ok": True, "relatorio": None, "historico": [], "gerando": gerando}
+
+        conteudo = json.loads(row["conteudo"]) if row["conteudo"] else {}
+        return {
+            "ok": True,
+            "gerando": gerando,
+            "relatorio": {
+                "id": row["id"],
+                "jogo_id": row["jogo_id"],
+                "gerado_em": row["gerado_em"],
+                "prompt_versao": row["prompt_versao"],
+                "modelo_versao": row["modelo_versao"],
+                "eh_relatorio_oficial": bool(row["eh_relatorio_oficial"]),
+                **conteudo,
+            },
+            "historico": [
+                {"id": h["id"], "gerado_em": h["gerado_em"], "oficial": bool(h["eh_relatorio_oficial"])}
+                for h in historico
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/relatorios/{relatorio_id}/marcar-oficial")
+def marcar_oficial(relatorio_id: int):
+    try:
+        repo = get_repo()
+        repo.marcar_relatorio_oficial(relatorio_id)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
 # /api/top-elo — top 10 times por rating Elo
 # ---------------------------------------------------------------------------
 

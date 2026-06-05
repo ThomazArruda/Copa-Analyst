@@ -1,10 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { BarChart2, Calendar, Database, Sliders, Activity, Trophy } from 'lucide-react'
+import { BarChart2, Calendar, Database, Sliders, Brain, Trophy } from 'lucide-react'
 import clsx from 'clsx'
 
 const NAV = [
   { to: '/', label: 'Jogos do Dia', icon: Calendar },
-  { to: '/analise', label: 'Análise Completa', icon: BarChart2 },
+  { to: '/analise', label: 'Análise Dixon-Coles', icon: BarChart2 },
+  { to: '/relatorio', label: 'Relatório IA', icon: Brain },
   { to: '/calibracao', label: 'Calibração', icon: Sliders },
   { to: '/atualizar', label: 'Atualizar Dados', icon: Database },
 ]
