@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { AlertCircle, ChevronDown } from 'lucide-react'
 import { api } from '../lib/api'
 import type { AnaliseCompleta as TAnalise, Jogo } from '../lib/api'
-import { flag } from '../lib/flags'
+import { flagUrl } from '../lib/flags'
 import ProbBar from '../components/ProbBar'
 
 function FormaRow({ data, mandante, visitante, placar_m, placar_v, competicao }: {
@@ -15,11 +15,17 @@ function FormaRow({ data, mandante, visitante, placar_m, placar_v, competicao }:
     <div className="flex items-center gap-3 py-2.5 border-b border-[#21262d] last:border-0 text-sm">
       <span className="text-[#484f58] text-xs w-12 flex-shrink-0 tabular-nums">{data.slice(5)}</span>
       <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-        <span className="text-[#c9d1d9] text-xs text-right truncate flex-1">{flag(mandante)} {mandante}</span>
+        <span className="text-[#c9d1d9] text-xs text-right truncate flex-1 flex items-center justify-end gap-1">
+          {flagUrl(mandante) && <img src={flagUrl(mandante)} alt={mandante} className="w-5 h-auto rounded-sm inline-block" />}
+          {mandante}
+        </span>
         <span className="font-bold text-[#e6edf3] bg-[#21262d] px-2.5 py-1 rounded-md text-xs flex-shrink-0 tabular-nums">
           {placar_m ?? '?'} – {placar_v ?? '?'}
         </span>
-        <span className="text-[#c9d1d9] text-xs text-left truncate flex-1">{flag(visitante)} {visitante}</span>
+        <span className="text-[#c9d1d9] text-xs text-left truncate flex-1 flex items-center gap-1">
+          {flagUrl(visitante) && <img src={flagUrl(visitante)} alt={visitante} className="w-5 h-auto rounded-sm inline-block" />}
+          {visitante}
+        </span>
       </div>
       <span className="text-[#484f58] text-xs w-20 text-right flex-shrink-0">
         {competicao.replace('elim_', '').replace('_2026', '').replace('_2022', '').toUpperCase()}
@@ -175,7 +181,11 @@ export default function AnaliseCompletaPage() {
               <div className="flex items-center justify-between mb-8">
                 {/* Mandante */}
                 <div className="flex-1 flex flex-col items-center gap-3">
-                  <div className="text-7xl leading-none">{flag(analise.mandante.nome)}</div>
+                  <div className="w-20 h-14 flex items-center justify-center">
+                    {flagUrl(analise.mandante.nome)
+                      ? <img src={flagUrl(analise.mandante.nome)} alt={analise.mandante.nome} className="w-20 h-auto rounded shadow-md" />
+                      : <span className="text-5xl">🏳️</span>}
+                  </div>
                   <div className="text-center">
                     <div className="text-[#e6edf3] font-black text-xl">{analise.mandante.nome}</div>
                     {analise.mandante.elo && (
@@ -191,7 +201,11 @@ export default function AnaliseCompletaPage() {
 
                 {/* Visitante */}
                 <div className="flex-1 flex flex-col items-center gap-3">
-                  <div className="text-7xl leading-none">{flag(analise.visitante.nome)}</div>
+                  <div className="w-20 h-14 flex items-center justify-center">
+                    {flagUrl(analise.visitante.nome)
+                      ? <img src={flagUrl(analise.visitante.nome)} alt={analise.visitante.nome} className="w-20 h-auto rounded shadow-md" />
+                      : <span className="text-5xl">🏳️</span>}
+                  </div>
                   <div className="text-center">
                     <div className="text-[#e6edf3] font-black text-xl">{analise.visitante.nome}</div>
                     {analise.visitante.elo && (
@@ -256,7 +270,7 @@ export default function AnaliseCompletaPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             <div className="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
               <h3 className="text-[#e6edf3] text-sm font-bold mb-4 flex items-center gap-2">
-                <span className="text-xl">{flag(analise.mandante.nome)}</span>
+                {flagUrl(analise.mandante.nome) && <img src={flagUrl(analise.mandante.nome)} alt="" className="w-6 h-auto rounded-sm" />}
                 Forma recente — {analise.mandante.nome}
               </h3>
               {analise.forma_recente.mandante.length === 0 ? (
@@ -267,7 +281,7 @@ export default function AnaliseCompletaPage() {
             </div>
             <div className="bg-[#161b22] border border-[#30363d] rounded-2xl p-5">
               <h3 className="text-[#e6edf3] text-sm font-bold mb-4 flex items-center gap-2">
-                <span className="text-xl">{flag(analise.visitante.nome)}</span>
+                {flagUrl(analise.visitante.nome) && <img src={flagUrl(analise.visitante.nome)} alt="" className="w-6 h-auto rounded-sm" />}
                 Forma recente — {analise.visitante.nome}
               </h3>
               {analise.forma_recente.visitante.length === 0 ? (

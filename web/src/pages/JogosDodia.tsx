@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, MapPin, Clock, TrendingUp, ArrowRight } from 'lucide-react'
 import { api } from '../lib/api'
 import type { Jogo, Previsao } from '../lib/api'
-import { flag } from '../lib/flags'
+import { flagUrl } from '../lib/flags'
 import ProbBar from '../components/ProbBar'
 import Tag from '../components/Tag'
 
@@ -45,7 +45,11 @@ function JogoCard({ jogo }: { jogo: Jogo }) {
         <div className="flex items-center justify-between mb-5">
           {/* Mandante */}
           <div className="flex-1 flex flex-col items-center gap-2">
-            <div className="text-5xl leading-none">{flag(jogo.mandante)}</div>
+            <div className="w-12 h-9 flex items-center justify-center">
+              {flagUrl(jogo.mandante)
+                ? <img src={flagUrl(jogo.mandante)} alt={jogo.mandante} className="w-12 h-auto rounded shadow-sm" />
+                : <span className="text-3xl">🏳️</span>}
+            </div>
             <div className="text-center">
               <div className="text-[#e6edf3] font-bold text-base">{jogo.mandante}</div>
               {jogo.mandante_elo && (
@@ -72,7 +76,11 @@ function JogoCard({ jogo }: { jogo: Jogo }) {
 
           {/* Visitante */}
           <div className="flex-1 flex flex-col items-center gap-2">
-            <div className="text-5xl leading-none">{flag(jogo.visitante)}</div>
+            <div className="w-12 h-9 flex items-center justify-center">
+              {flagUrl(jogo.visitante)
+                ? <img src={flagUrl(jogo.visitante)} alt={jogo.visitante} className="w-12 h-auto rounded shadow-sm" />
+                : <span className="text-3xl">🏳️</span>}
+            </div>
             <div className="text-center">
               <div className="text-[#e6edf3] font-bold text-base">{jogo.visitante}</div>
               {jogo.visitante_elo && (

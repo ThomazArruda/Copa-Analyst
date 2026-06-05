@@ -132,6 +132,7 @@ class Repositorio:
 
     def upsert_jogo(self, jogo: Jogo) -> int:
         with self._conn() as conn:
+            # Deduplicação por id_externo (fontes com ID externo definido)
             if jogo.id_externo and jogo.competicao:
                 row = conn.execute(
                     "SELECT id FROM jogos WHERE id_externo = ? AND competicao = ?",
@@ -142,6 +143,22 @@ class Repositorio:
                         UPDATE jogos SET placar_mandante=?, placar_visitante=?
                         WHERE id = ?
                     """, (jogo.placar_mandante, jogo.placar_visitante, row["id"]))
+                    return row["id"]
+
+            # Deduplicação por combinação natural quando não há id_externo (ex: openfootball)
+            if not jogo.id_externo and jogo.competicao and jogo.time_mandante_id and jogo.time_visitante_id:
+                row = conn.execute("""
+                    SELECT id FROM jogos
+                    WHERE competicao = ? AND data = ? AND time_mandante_id = ? AND time_visitante_id = ?
+                """, (jogo.competicao, jogo.data, jogo.time_mandante_id, jogo.time_visitante_id)).fetchone()
+                if row:
+                    conn.execute("""
+                        UPDATE jogos SET hora_utc=?, campo_neutro=?, fase=?, grupo=?, cidade=?,
+                                         altitude_m=?, placar_mandante=?, placar_visitante=?, fonte=?
+                        WHERE id = ?
+                    """, (jogo.hora_utc, jogo.campo_neutro, jogo.fase, jogo.grupo, jogo.cidade,
+                          jogo.altitude_m, jogo.placar_mandante, jogo.placar_visitante, jogo.fonte,
+                          row["id"]))
                     return row["id"]
 
             cur = conn.execute("""
