@@ -97,11 +97,17 @@ class IngestorOpenfootball:
             cidade = ground.split(",")[0].strip() if ground else ""
             altitude = ALTITUDE_CIDADES.get(cidade)
 
-            # placar (Copa 2026 não tem resultados ainda)
+            # placar — para Copa 2026, NUNCA importar do openfootball
+            # (fonte canônica de resultados é TheSportsDB, via atualizar_resultados_copa26)
+            # Copa 2022: importar normalmente para histórico
             score = m.get("score") or {}
             ft = score.get("ft") or []
-            placar1 = ft[0] if len(ft) > 0 else None
-            placar2 = ft[1] if len(ft) > 1 else None
+            if competicao == "copa_2026":
+                placar1 = None
+                placar2 = None
+            else:
+                placar1 = ft[0] if len(ft) > 0 else None
+                placar2 = ft[1] if len(ft) > 1 else None
 
             # hora — formato "13:00 UTC-6", extrair HH:MM
             hora_raw = m.get("time", "")
