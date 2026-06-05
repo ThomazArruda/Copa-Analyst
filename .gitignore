@@ -22,6 +22,9 @@ build/
 # Relatórios gerados (artefatos de runtime, não código)
 relatorios/
 
+# Claude Code (configurações locais — não commitar)
+.claude/settings.local.json
+
 # IDE
 .vscode/
 .idea/

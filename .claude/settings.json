@@ -1,0 +1,11 @@
+{
+  "projectName": "Copa Analyst",
+  "permissions": {
+    "allow": [
+      "Bash(python*)",
+      "Bash(streamlit*)",
+      "Bash(git*)",
+      "Bash(pip*)"
+    ]
+  }
+}
