@@ -1,17 +1,15 @@
 """
 Rating prior de seleções nacionais.
-Estratégia: calcular Elo a partir dos resultados históricos de Copa do Mundo
-disponíveis no banco (Copa 2022 + qualificatórias 2022-2024), usando K-factor
-diferenciado por importância do jogo.
+Estratégia (v2): semear com os ratings reais do eloratings.net (scraped em
+06/jun/2026) e depois ajustar com os jogos da Copa 2022 disponíveis no banco.
 
-Quando não há jogos suficientes no banco ainda, usa Elo inicial de 1500
-para todos os times — isso melhora conforme mais dados são ingeridos.
+Isso resolve o cold start de times como México, Colômbia, Noruega etc. que
+não têm jogos de Copa no free tier mas têm rating significativo no Elo global.
 
-Referência: metodologia World Football Elo (eloratings.net), adaptada.
+Referência: World Football Elo Ratings (eloratings.net), metodologia pública.
 """
 
 import logging
-import math
 from datetime import datetime, timezone
 from src.db.repositorio import Repositorio, Time
 
@@ -36,6 +34,40 @@ K_FACTORS = {
 }
 
 ELO_INICIAL = 1500.0
+
+# ---------------------------------------------------------------------------
+# Ratings eloratings.net — scraped em 06/jun/2026 (pré-Copa 2026)
+# Nomes mapeados para o padrão do nosso banco (openfootball/API-Football).
+# Atualizar rodando: python -m src.modelos.rating_prior --atualizar
+# ---------------------------------------------------------------------------
+ELORATINGS_SEED: dict[str, float] = {
+    "Spain": 2155, "Argentina": 2113, "France": 2062, "England": 2020,
+    "Brazil": 1988, "Portugal": 1984, "Colombia": 1977, "Netherlands": 1944,
+    "Ecuador": 1935, "Germany": 1925, "Norway": 1917, "Croatia": 1908,
+    "Turkey": 1906, "Japan": 1906, "Switzerland": 1894, "Belgium": 1893,
+    "Uruguay": 1892, "Mexico": 1875, "Senegal": 1867, "Denmark": 1864,
+    "Italy": 1859, "Paraguay": 1833, "Austria": 1830, "Morocco": 1824,
+    "Canada": 1788, "Ukraine": 1785, "Australia": 1774, "Iran": 1772,
+    "Scotland": 1770, "Nigeria": 1770, "Algeria": 1760, "South Korea": 1758,
+    # "Czechia" no eloratings = "Czech Republic" no nosso banco
+    "Czech Republic": 1740,
+    "Serbia": 1734, "Panama": 1734, "United States": 1733, "Venezuela": 1727,
+    "Uzbekistan": 1718, "Sweden": 1712, "Poland": 1710, "Chile": 1710,
+    "Hungary": 1707, "Peru": 1701, "Egypt": 1699, "Ireland": 1699,
+    "Ivory Coast": 1695, "Wales": 1691, "Slovenia": 1685, "Jordan": 1685,
+    "Slovakia": 1667, "DR Congo": 1661, "Israel": 1647, "Bolivia": 1645,
+    "Albania": 1633, "Romania": 1630, "Tunisia": 1628, "Iraq": 1618,
+    "Cameroon": 1613, "Costa Rica": 1611, "Greece": 1754,
+    "Bosnia & Herzegovina": 1591, "Bosnia and Herzegovina": 1591,
+    "Mali": 1588, "Cape Verde": 1576, "Honduras": 1571, "Saudi Arabia": 1569,
+    "New Zealand": 1563, "Haiti": 1548, "United Arab Emirates": 1540,
+    "Jamaica": 1527, "South Africa": 1518, "Ghana": 1510,
+    "Guatemala": 1507, "Qatar": 1423, "Curacao": 1433, "Curaçao": 1433,
+    "Trinidad and Tobago": 1388, "El Salvador": 1340,
+    # China PR no nosso banco
+    "China PR": 1428,
+    "Indonesia": 1362, "Vietnam": 1351, "Thailand": 1372,
+}
 
 
 class RatingPrior:
@@ -69,11 +101,25 @@ class RatingPrior:
         """
         Calcula Elo para todos os times com base nos jogos do banco,
         em ordem cronológica. Salva o rating_prior de cada time.
-        Retorna número de times atualizados.
+
+        Semente: eloratings.net (ratings reais, pré-Copa 2026).
+        Para times sem seed, usa ELO_INICIAL=1500.
+        Ajusta com Copa 2022 por cima.
         """
-        # Buscar todos os jogos com resultado, ordenados por data
         times = {t.id: t for t in self.repo.listar_times()}
-        elos: dict[int, float] = {tid: ELO_INICIAL for tid in times}
+
+        # Semear com eloratings.net onde disponível
+        elos: dict[int, float] = {}
+        seed_count = 0
+        for tid, t in times.items():
+            seed = ELORATINGS_SEED.get(t.nome)
+            if seed:
+                elos[tid] = float(seed)
+                seed_count += 1
+            else:
+                elos[tid] = ELO_INICIAL
+        logger.info("Elo seed: %d times com rating eloratings.net, %d com default 1500",
+                    seed_count, len(times) - seed_count)
 
         # Usar APENAS jogos de Copa do Mundo para o prior.
         # Motivo: qualificatórias inflam times que vencem muitos jogos contra
