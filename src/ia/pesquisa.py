@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import anthropic
 
+from src.ia._retry import criar_mensagem_com_retry
+
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,8 @@ Se uma informação não for encontrada, declare explicitamente como "não encon
 Seja objetivo e factual. Não invente informações."""
 
     try:
-        resposta = cliente.messages.create(
+        resposta = criar_mensagem_com_retry(
+            cliente,
             model=MODELO,
             max_tokens=2048,
             tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": MAX_BUSCAS_PESQUISA}],

@@ -4,6 +4,7 @@ Expõe toda a lógica Python existente como uma API REST.
 """
 import os
 import sys
+import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -284,28 +285,45 @@ def recalcular_elo():
 
 @app.get("/api/calibracao")
 def calibracao():
-    import sqlite3
-    db_path = os.getenv("COPA_DB_PATH", "dados/copa_analyst.db")
+    """
+    Painel de calibração real (PRD Seção 9): Brier score + log-loss por mercado,
+    apenas sobre relatórios oficiais com resultado_real. Mantém as chaves antigas
+    (total_avaliados, relatorios_oficiais, msg) para compatibilidade com o frontend.
+    """
+    from src.validacao.calibracao import calcular_calibracao, pontos_calibracao
+
+    repo = get_repo()
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        # Relatórios com resultado disponível
-        rows = conn.execute("""
-            SELECT r.id, r.jogo_id, r.gerado_em, r.conteudo,
-                   j.placar_mandante, j.placar_visitante, j.data
-            FROM relatorios r
-            JOIN jogos j ON j.id = r.jogo_id
-            WHERE r.eh_relatorio_oficial = 1
-              AND j.placar_mandante IS NOT NULL
-            ORDER BY j.data DESC
-            LIMIT 50
-        """).fetchall()
-        conn.close()
-        total = len(rows)
+        painel = calcular_calibracao(repo)
+        pontos = pontos_calibracao(repo)
+
+        total = painel.total_previsoes_avaliadas
+        if total == 0:
+            msg = "Painel ficará ativo após os primeiros jogos da Copa."
+        else:
+            msg = painel.aviso_ruido or None
+
         return {
+            # compatibilidade com a UI atual
             "total_avaliados": total,
-            "relatorios_oficiais": total,
-            "msg": "Painel ficará ativo após os primeiros jogos da Copa." if total == 0 else None,
+            "relatorios_oficiais": painel.total_relatorios_oficiais,
+            "msg": msg,
+            # métricas reais (PRD 9.3)
+            "por_mercado": [
+                {
+                    "mercado": m.mercado,
+                    "n": m.n,
+                    "brier_score": m.brier_score,
+                    "log_loss": m.log_loss,
+                    "acerto_binario": m.acerto_binario,  # display only — PRD 9.3
+                    "ruido_alto": m.ruido_alto,
+                    "alerta_leakage": m.alerta_leakage,
+                }
+                for m in painel.por_mercado
+            ],
+            "aviso_ruido": painel.aviso_ruido or None,
+            "alerta_leakage": painel.alerta_leakage or None,
+            "pontos_calibracao": pontos,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

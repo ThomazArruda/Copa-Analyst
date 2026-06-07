@@ -13,6 +13,7 @@ import anthropic
 
 from src.ia.validacao import validar_saida, saida_para_dict, SaidaIA
 from src.ia.pesquisa import pesquisar_jogo
+from src.ia._retry import criar_mensagem_com_retry
 from src.db.repositorio import Repositorio, Jogo, Time
 from src.modelos.dixon_coles import DixonColes, PrevisaoCalculada
 from src.modelos.mercados import calcular_mercados_secundarios
@@ -202,7 +203,8 @@ def _chamar_claude(sistema: str, contexto: str) -> str:
         return _sintese_mock()
 
     cliente = _cliente()
-    resposta = cliente.messages.create(
+    resposta = criar_mensagem_com_retry(
+        cliente,
         model=MODELO,
         max_tokens=4096,
         system=sistema,
@@ -300,7 +302,8 @@ def analisar_jogo(jogo_id: int, repo: Repositorio) -> dict:
 Por favor, corrija e retorne APENAS o JSON válido, sem nenhum texto fora do bloco JSON."""
 
         cliente = _cliente()
-        resposta_repair = cliente.messages.create(
+        resposta_repair = criar_mensagem_com_retry(
+            cliente,
             model=MODELO,
             max_tokens=4096,
             system=sistema,

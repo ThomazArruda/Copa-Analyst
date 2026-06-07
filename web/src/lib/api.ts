@@ -126,6 +126,32 @@ export interface RelatorioResponse {
   historico: { id: number; gerado_em: string; oficial: boolean }[]
 }
 
+export interface MetricaMercado {
+  mercado: string
+  n: number
+  brier_score: number
+  log_loss: number
+  acerto_binario: number
+  ruido_alto: boolean
+  alerta_leakage: boolean
+}
+
+export interface PontoCalibracao {
+  prob_prevista: number
+  freq_real: number
+  n: number
+}
+
+export interface CalibracaoResponse {
+  total_avaliados: number
+  relatorios_oficiais: number
+  msg: string | null
+  por_mercado?: MetricaMercado[]
+  aviso_ruido?: string | null
+  alerta_leakage?: string | null
+  pontos_calibracao?: PontoCalibracao[]
+}
+
 export const api = {
   jogos: (data?: string) => get<Jogo[]>(data ? `/jogos?data=${data}` : '/jogos'),
   datas: () => get<string[]>('/jogos/datas'),
@@ -135,7 +161,7 @@ export const api = {
   topElo: () => get<TopElo[]>('/top-elo'),
   atualizar: () => post<{ ok: boolean; msg: string }>('/atualizar'),
   recalcularElo: () => post<{ ok: boolean; times_atualizados: number }>('/recalcular-elo'),
-  calibracao: () => get<{ total_avaliados: number; relatorios_oficiais: number; msg: string | null }>('/calibracao'),
+  calibracao: () => get<CalibracaoResponse>('/calibracao'),
   relatorio: (jogoId: number) => get<RelatorioResponse>(`/jogos/${jogoId}/relatorio`),
   gerarRelatorio: (jogoId: number) => post<{ ok: boolean; msg: string }>(`/jogos/${jogoId}/gerar-relatorio`),
   marcarOficial: (relatorioId: number) => post<{ ok: boolean }>(`/relatorios/${relatorioId}/marcar-oficial`),
