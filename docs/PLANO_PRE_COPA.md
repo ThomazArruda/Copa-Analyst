@@ -50,8 +50,8 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 |---|--------|--------|
 | 6 | Plugar Brier/log-loss real em `/api/calibracao` (lógica já existe em `src/validacao/calibracao.py`; hoje a API só conta) | ✅ |
 | 7 | Atualizar `README.md` para o stack real (FastAPI + React; remover instruções Streamlit) | ✅ |
-| 8 | Rodar ingestão diária de stats (`python -m src.dados.ingestao inicial`) para reduzir mercados "ausentes" | ⬜ |
-| 9 | Definir fluxo operacional do dia de jogo: gerar → marcar oficial antes do apito → puxar `resultado_real` depois (anti-leakage, PRD 9) | ⬜ |
+| 8 | Rodar ingestão diária de stats (`python -m src.dados.ingestao inicial`) para reduzir mercados "ausentes" | 🔄 em andamento |
+| 9 | Definir fluxo operacional do dia de jogo: gerar → marcar oficial antes do apito → puxar `resultado_real` depois (anti-leakage, PRD 9) | ✅ |
 
 ---
 
@@ -74,5 +74,8 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 | 2026-06-06 | P2 #7 | `README.md` atualizado para FastAPI + React; instruções Streamlit removidas (mantida nota de fallback legado). |
 | 2026-06-06 | P1 #3–#5 | Análise real de México × África do Sul (jogo 29) rodada com sucesso (relatorio_id=9). Saída auditada contra o PRD: OK. Descoberto rate limit de 30k tokens/min. |
 | 2026-06-06 | P1 (extra) | Adicionado retry/backoff em 429 (`src/ia/_retry.py`) ligado a `pesquisa.py` e `sintese.py` (chamada principal + repair). Faz o pipeline sobreviver ao rate limit. |
+| 2026-06-07 | P2 #9 | Salvaguarda anti-leakage criada: `src/relatorio/oficial.py` (kickoff, `marcar_oficial_seguro`, `marcar_oficiais_automatico` + CLI). Endpoint `marcar-oficial` agora recusa relatório gerado após o apito; novo `POST /api/marcar-oficiais-automatico`. Frontend mostra o motivo da recusa. Doc `docs/FLUXO_DIA_DE_JOGO.md`. Validado read-only (jogo 29 kickoff 11/jun 13:00 UTC). |
+| 2026-06-07 | P2 #8 | Ingestão `inicial` rodada: etapas 1–4 OK; etapa 5 consumiu ~100 requests e bateu o limite diário. Stats subiram de 494→696 linhas (UEFA 2024: 99→200 jogos com stats). Cota reabre amanhã. |
+| 2026-06-07 | P2 #8 (fix) | Cliente API-Football agora sinaliza `limite_diario_atingido` e a ingestão **aborta cedo** ao esgotar a cota (antes girava 7s/fixture à toa). `src/dados/api_football.py` + `src/dados/ingestao.py`. |
 </content>
 </invoke>

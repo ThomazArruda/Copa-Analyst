@@ -185,9 +185,17 @@ export default function Relatorio() {
     },
   })
 
+  const [oficialErro, setOficialErro] = useState<string | null>(null)
   const mutOficial = useMutation({
     mutationFn: (id: number) => api.marcarOficial(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['relatorio', jogoId] }),
+    onSuccess: (res) => {
+      if (res.ok) {
+        setOficialErro(null)
+        qc.invalidateQueries({ queryKey: ['relatorio', jogoId] })
+      } else {
+        setOficialErro(res.motivo ?? 'Não foi possível marcar como oficial.')
+      }
+    },
   })
 
   const rel = relData?.relatorio
@@ -285,6 +293,14 @@ export default function Relatorio() {
                 </button>
               )}
             </div>
+
+            {/* Aviso anti-leakage ao tentar marcar oficial após o apito */}
+            {oficialErro && (
+              <div className="mt-4 flex items-start gap-2 text-[#f85149] bg-[#f851491a] border border-[#f8514930] rounded-xl px-4 py-3">
+                <AlertCircle size={15} className="flex-shrink-0 mt-0.5" />
+                <div className="text-xs leading-relaxed">{oficialErro}</div>
+              </div>
+            )}
 
             {/* Resumo executivo */}
             <div className="mt-4 pt-4 border-t border-[#21262d]">

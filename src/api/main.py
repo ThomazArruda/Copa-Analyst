@@ -408,10 +408,25 @@ def buscar_relatorio(jogo_id: int):
 
 @app.post("/api/relatorios/{relatorio_id}/marcar-oficial")
 def marcar_oficial(relatorio_id: int):
+    """Marca relatório como oficial com guarda anti-leakage (PRD 9.1):
+    recusa se o relatório foi gerado após o apito inicial."""
     try:
+        from src.relatorio.oficial import marcar_oficial_seguro
         repo = get_repo()
-        repo.marcar_relatorio_oficial(relatorio_id)
-        return {"ok": True}
+        res = marcar_oficial_seguro(repo, relatorio_id)
+        return res  # {ok, motivo, ...} — ok=False quando violaria anti-leakage
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/marcar-oficiais-automatico")
+def marcar_oficiais_automatico_endpoint(data: str = None):
+    """Fixa, para cada jogo já iniciado, o último relatório gerado antes do apito
+    como oficial (PRD 9.1). Opcional: limitar a uma data (YYYY-MM-DD)."""
+    try:
+        from src.relatorio.oficial import marcar_oficiais_automatico
+        repo = get_repo()
+        return {"ok": True, **marcar_oficiais_automatico(repo, data)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

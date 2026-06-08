@@ -36,6 +36,7 @@ class ClienteApiFootball:
         if not self.api_key:
             raise ValueError("API_FOOTBALL_KEY não configurada no .env")
         self.headers = {"x-apisports-key": self.api_key}
+        self.limite_diario_atingido = False  # set quando a cota de 100/dia esgota
 
     def _get(self, endpoint: str, params: dict) -> dict | None:
         cached = self.repo.cache_get("api_football", endpoint, params)
@@ -57,7 +58,15 @@ class ClienteApiFootball:
             data = r.json()
             if data.get("errors"):
                 errs = data["errors"]
-                if "rateLimit" in str(errs):
+                errs_str = str(errs)
+                # Cota diária esgotada → sinaliza para o chamador abortar cedo (não adianta
+                # continuar; cada chamada só gasta os 7s de PAUSE retornando nada).
+                if "limit for the day" in errs_str or "reached the request limit" in errs_str:
+                    if not self.limite_diario_atingido:
+                        logger.warning("API-Football: limite diário (100/dia) atingido — abortando coleta.")
+                    self.limite_diario_atingido = True
+                    return None
+                if "rateLimit" in errs_str:
                     logger.warning("API-Football rateLimit — aguardando 65s e reintentando")
                     time.sleep(65)
                     return self._get(endpoint, params)  # retry uma vez

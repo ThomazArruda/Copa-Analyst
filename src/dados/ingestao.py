@@ -125,10 +125,14 @@ def ingestao_inicial(pular_api_football: bool = False) -> dict:
                 logger.info("API-Football: %s/%s requests usados hoje", usados, limite)
 
             for competicao_key in COMPETICOES_STATS:
+                if af.limite_diario_atingido:
+                    break
                 fixtures = af.buscar_fixtures(competicao_key)
                 logger.info("%s: %d fixtures encontrados", competicao_key, len(fixtures))
                 stats_ok = 0
                 for f in fixtures:
+                    if af.limite_diario_atingido:
+                        break
                     fixture_id = f["fixture"]["id"]
                     status_jogo = f["fixture"]["status"]["short"]
                     if status_jogo != "FT":
@@ -140,6 +144,9 @@ def ingestao_inicial(pular_api_football: bool = False) -> dict:
                         stats_ok += 1
                 relatorio["stats_api_football"][competicao_key] = stats_ok
                 logger.info("%s: %d jogos com stats", competicao_key, stats_ok)
+            if af.limite_diario_atingido:
+                logger.info("Coleta de stats interrompida: limite diário da API-Football atingido.")
+                relatorio["erros"].append("API-Football: limite diário (100/dia) atingido — coleta parcial.")
         except Exception as e:
             msg = f"API-Football falhou: {e}"
             logger.error(msg)

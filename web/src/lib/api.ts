@@ -164,5 +164,5 @@ export const api = {
   calibracao: () => get<CalibracaoResponse>('/calibracao'),
   relatorio: (jogoId: number) => get<RelatorioResponse>(`/jogos/${jogoId}/relatorio`),
   gerarRelatorio: (jogoId: number) => post<{ ok: boolean; msg: string }>(`/jogos/${jogoId}/gerar-relatorio`),
-  marcarOficial: (relatorioId: number) => post<{ ok: boolean }>(`/relatorios/${relatorioId}/marcar-oficial`),
+  marcarOficial: (relatorioId: number) => post<{ ok: boolean; motivo?: string }>(`/relatorios/${relatorioId}/marcar-oficial`),
 }
