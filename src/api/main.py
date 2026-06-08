@@ -336,7 +336,9 @@ def calibracao():
 _gerando: dict[int, bool] = {}
 
 @app.post("/api/jogos/{jogo_id}/gerar-relatorio")
-def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks):
+def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks, modelo: str = None):
+    """Dispara a análise com Claude. `modelo` opcional: 'opus' (jogos importantes)
+    ou 'sonnet' (default). Sem o parâmetro, usa o default do ambiente."""
     if _gerando.get(jogo_id):
         return {"ok": False, "msg": "Análise já em andamento para este jogo."}
     _gerando[jogo_id] = True
@@ -345,7 +347,7 @@ def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks):
         try:
             from src.ia.sintese import analisar_jogo
             repo = get_repo()
-            analisar_jogo(jogo_id, repo)
+            analisar_jogo(jogo_id, repo, modelo=modelo)
         except Exception:
             logger.exception("Erro na análise do jogo %d", jogo_id)
         finally:

@@ -156,6 +156,7 @@ export default function Relatorio() {
   })
 
   const [jogoId, setJogoId] = useState<number | null>(null)
+  const [modelo, setModelo] = useState<'sonnet' | 'opus'>('sonnet')
 
   useEffect(() => {
     if (jogoIdParam) {
@@ -179,7 +180,7 @@ export default function Relatorio() {
   })
 
   const mutGerar = useMutation({
-    mutationFn: () => api.gerarRelatorio(jogoId!),
+    mutationFn: () => api.gerarRelatorio(jogoId!, modelo),
     onSuccess: () => {
       setTimeout(() => qc.invalidateQueries({ queryKey: ['relatorio', jogoId] }), 2000)
     },
@@ -226,6 +227,24 @@ export default function Relatorio() {
                   {j.data} · {j.mandante} × {j.visitante} (Grupo {j.grupo})
                 </option>
               ))}
+            </select>
+            <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8b949e] pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Seletor de modelo: Opus para jogos importantes */}
+        <div>
+          <label className="block text-[#8b949e] text-xs font-semibold mb-2 uppercase tracking-wider">Modelo</label>
+          <div className="relative">
+            <select
+              className="bg-[#161b22] border border-[#30363d] text-[#e6edf3] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#58a6ff] appearance-none pr-9 cursor-pointer"
+              value={modelo}
+              onChange={e => setModelo(e.target.value as 'sonnet' | 'opus')}
+              disabled={gerando}
+              title="Opus é mais capaz (jogos importantes); Sonnet é mais rápido/barato"
+            >
+              <option value="sonnet">Sonnet (padrão)</option>
+              <option value="opus">Opus (jogos importantes)</option>
             </select>
             <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8b949e] pointer-events-none" />
           </div>

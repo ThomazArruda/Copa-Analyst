@@ -59,8 +59,10 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 
 - ✅ ~~Automação (cron/loop) para puxar resultados durante o torneio.~~ — feito via
   Agendador do Windows (`CopaAnalyst-IngestaoDiaria`, comando `stats` leve).
-- ⬜ Email diário (Resend) — só se o grupo quiser digest automático (precisa `RESEND_API_KEY`).
-- ⬜ Avaliar subir o modelo de síntese de `claude-sonnet-4-6` para Opus em jogos importantes.
+- ✅ ~~Opus em jogos importantes.~~ — síntese com modelo selecionável por jogo
+  (`opus`/`sonnet`) via API (`?modelo=`) e seletor na UI. Default segue `sonnet` (custo).
+- ⏸️ Email diário (Resend) — **código pronto** (`src/relatorio/email_diario.py`);
+  falta só o usuário pôr `RESEND_API_KEY` + `EMAIL_DESTINATARIOS` no `.env`.
 
 ---
 
@@ -79,5 +81,6 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 | 2026-06-07 | P2 #8 | Ingestão `inicial` rodada: etapas 1–4 OK; etapa 5 consumiu ~100 requests e bateu o limite diário. Stats subiram de 494→696 linhas (UEFA 2024: 99→200 jogos com stats). Cota reabre amanhã. |
 | 2026-06-07 | P2 #8 (fix) | Cliente API-Football agora sinaliza `limite_diario_atingido` e a ingestão **aborta cedo** ao esgotar a cota (antes girava 7s/fixture à toa). `src/dados/api_football.py` + `src/dados/ingestao.py`. |
 | 2026-06-08 | P3 (automação) | Ingestão diária automatizada: subcomando leve `stats` (só etapa API-Football, sem re-scrape), `scripts/ingestao_diaria.ps1` + `scripts/registrar_tarefa_diaria.ps1`, tarefa `CopaAnalyst-IngestaoDiaria` registrada (09:00, State Ready). Testada ponta a ponta (~24s, aborta no limite, log em `dados/logs/`). Doc de fluxo atualizada. |
+| 2026-06-08 | P3 (Opus) | Modelo de síntese selecionável por jogo: `resolver_modelo` + apelidos opus/sonnet em `sintese.py`, `analisar_jogo(modelo=)`, endpoint `gerar-relatorio?modelo=`, seletor na UI (`Relatorio.tsx`). `modelo_versao` registra o modelo usado. IDs conferidos na ref da Claude API (opus=claude-opus-4-8). Email Resend confirmado code-complete (só config). |
 </content>
 </invoke>

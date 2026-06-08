@@ -163,6 +163,9 @@ export const api = {
   recalcularElo: () => post<{ ok: boolean; times_atualizados: number }>('/recalcular-elo'),
   calibracao: () => get<CalibracaoResponse>('/calibracao'),
   relatorio: (jogoId: number) => get<RelatorioResponse>(`/jogos/${jogoId}/relatorio`),
-  gerarRelatorio: (jogoId: number) => post<{ ok: boolean; msg: string }>(`/jogos/${jogoId}/gerar-relatorio`),
+  gerarRelatorio: (jogoId: number, modelo?: string) =>
+    post<{ ok: boolean; msg: string }>(
+      `/jogos/${jogoId}/gerar-relatorio${modelo ? `?modelo=${modelo}` : ''}`
+    ),
   marcarOficial: (relatorioId: number) => post<{ ok: boolean; motivo?: string }>(`/relatorios/${relatorioId}/marcar-oficial`),
 }

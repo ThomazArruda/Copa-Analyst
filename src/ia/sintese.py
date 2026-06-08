@@ -24,6 +24,21 @@ logger = logging.getLogger(__name__)
 MODELO = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 MAX_BUSCAS_SINTESE = 3
 PROMPT_VERSAO = "v1"
+
+# Apelidos de modelo aceitos pela API/UI (jogos importantes → Opus).
+# IDs conferidos na referência da Claude API (claude-opus-4-8 = mais capaz atual).
+MODELOS_DISPONIVEIS = {
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-8",
+}
+
+
+def resolver_modelo(modelo: str | None) -> str:
+    """Resolve apelido ('opus'/'sonnet') ou id completo para um id de modelo válido.
+    None → default do ambiente (CLAUDE_MODEL ou sonnet)."""
+    if not modelo:
+        return MODELO
+    return MODELOS_DISPONIVEIS.get(modelo.lower(), modelo)
 PROMPT_PATH = Path(__file__).parent.parent.parent / "prompts" / f"sintese_{PROMPT_VERSAO}.md"
 
 
@@ -197,7 +212,7 @@ def _resumir_h2h(jogos: list, pacote: dict) -> str:
     return "\n".join(linhas)
 
 
-def _chamar_claude(sistema: str, contexto: str) -> str:
+def _chamar_claude(sistema: str, contexto: str, modelo: str = None) -> str:
     """Chama Claude com o prompt de síntese. Sem web search — só raciocínio sobre o contexto."""
     if os.getenv("MOCK_AI", "").lower() == "true":
         return _sintese_mock()
@@ -205,7 +220,7 @@ def _chamar_claude(sistema: str, contexto: str) -> str:
     cliente = _cliente()
     resposta = criar_mensagem_com_retry(
         cliente,
-        model=MODELO,
+        model=modelo or MODELO,
         max_tokens=4096,
         system=sistema,
         messages=[{"role": "user", "content": contexto}],
@@ -247,13 +262,16 @@ def _sintese_mock() -> str:
 # Ponto de entrada principal
 # ---------------------------------------------------------------------------
 
-def analisar_jogo(jogo_id: int, repo: Repositorio) -> dict:
+def analisar_jogo(jogo_id: int, repo: Repositorio, modelo: str = None) -> dict:
     """
     Pipeline completo de análise para um jogo.
+    `modelo`: apelido ('opus'/'sonnet') ou id; None → default do ambiente.
     Retorna dict com relatório_id e a SaidaIA validada.
     """
     from src.dados.ingestao import pacote_jogo, COMPETICOES_FORMA
     from src.modelos.mercados import calcular_mercados_secundarios
+
+    modelo_usado = resolver_modelo(modelo)
 
     # 1. Coletar dados
     pacote = pacote_jogo(jogo_id)
@@ -288,8 +306,8 @@ def analisar_jogo(jogo_id: int, repo: Repositorio) -> dict:
     )
 
     # 6. Chamar Claude
-    logger.info("Chamando Claude para síntese: %s × %s", time_m.nome, time_v.nome)
-    texto_saida = _chamar_claude(sistema, contexto)
+    logger.info("Chamando Claude (%s) para síntese: %s × %s", modelo_usado, time_m.nome, time_v.nome)
+    texto_saida = _chamar_claude(sistema, contexto, modelo_usado)
 
     # 7. Validar output (com 1 tentativa de repair)
     saida, erros = validar_saida(texto_saida)
@@ -304,7 +322,7 @@ Por favor, corrija e retorne APENAS o JSON válido, sem nenhum texto fora do blo
         cliente = _cliente()
         resposta_repair = criar_mensagem_com_retry(
             cliente,
-            model=MODELO,
+            model=modelo_usado,
             max_tokens=4096,
             system=sistema,
             messages=[
@@ -334,7 +352,7 @@ Por favor, corrija e retorne APENAS o JSON válido, sem nenhum texto fora do blo
         "jogo_id": jogo_id,
         "gerado_em": agora,
         "prompt_versao": PROMPT_VERSAO,
-        "modelo_versao": MODELO,
+        "modelo_versao": modelo_usado,
         "conteudo": json.dumps(saida_dict, ensure_ascii=False),
         "fatores_avaliados": saida.fatores_avaliados,
         "fatores_ausentes": saida.fatores_ausentes,
