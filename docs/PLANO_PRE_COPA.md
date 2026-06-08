@@ -57,9 +57,10 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 
 ## P3 — Opcional / pós-abertura
 
-- Email diário (Resend) — só se o grupo quiser digest automático (precisa `RESEND_API_KEY`).
-- Automação (cron/loop) para puxar resultados durante o torneio.
-- Avaliar subir o modelo de síntese de `claude-sonnet-4-6` para Opus em jogos importantes.
+- ✅ ~~Automação (cron/loop) para puxar resultados durante o torneio.~~ — feito via
+  Agendador do Windows (`CopaAnalyst-IngestaoDiaria`, comando `stats` leve).
+- ⬜ Email diário (Resend) — só se o grupo quiser digest automático (precisa `RESEND_API_KEY`).
+- ⬜ Avaliar subir o modelo de síntese de `claude-sonnet-4-6` para Opus em jogos importantes.
 
 ---
 
@@ -77,5 +78,6 @@ completa. Custo: cada relatório agora leva ~2–3 min. Para acelerar no dia de 
 | 2026-06-07 | P2 #9 | Salvaguarda anti-leakage criada: `src/relatorio/oficial.py` (kickoff, `marcar_oficial_seguro`, `marcar_oficiais_automatico` + CLI). Endpoint `marcar-oficial` agora recusa relatório gerado após o apito; novo `POST /api/marcar-oficiais-automatico`. Frontend mostra o motivo da recusa. Doc `docs/FLUXO_DIA_DE_JOGO.md`. Validado read-only (jogo 29 kickoff 11/jun 13:00 UTC). |
 | 2026-06-07 | P2 #8 | Ingestão `inicial` rodada: etapas 1–4 OK; etapa 5 consumiu ~100 requests e bateu o limite diário. Stats subiram de 494→696 linhas (UEFA 2024: 99→200 jogos com stats). Cota reabre amanhã. |
 | 2026-06-07 | P2 #8 (fix) | Cliente API-Football agora sinaliza `limite_diario_atingido` e a ingestão **aborta cedo** ao esgotar a cota (antes girava 7s/fixture à toa). `src/dados/api_football.py` + `src/dados/ingestao.py`. |
+| 2026-06-08 | P3 (automação) | Ingestão diária automatizada: subcomando leve `stats` (só etapa API-Football, sem re-scrape), `scripts/ingestao_diaria.ps1` + `scripts/registrar_tarefa_diaria.ps1`, tarefa `CopaAnalyst-IngestaoDiaria` registrada (09:00, State Ready). Testada ponta a ponta (~24s, aborta no limite, log em `dados/logs/`). Doc de fluxo atualizada. |
 </content>
 </invoke>

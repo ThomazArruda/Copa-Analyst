@@ -68,15 +68,35 @@ O par `(gerado_em < kickoff)` é a prova de que a previsão precedeu o resultado
 
 ---
 
+## Automação da ingestão diária
+
+A coleta de dados (resultados + stats) roda **automaticamente todo dia** via Agendador
+de Tarefas do Windows. Tarefa: `CopaAnalyst-IngestaoDiaria` (padrão 09:00), que executa
+`scripts/ingestao_diaria.ps1` → `ingestao atualizar` + `ingestao stats`. Logs em
+`dados/logs/ingestao_diaria_<data>.log`.
+
+```powershell
+# Registrar / alterar horário
+powershell -ExecutionPolicy Bypass -File scripts\registrar_tarefa_diaria.ps1 -Hora 09:00
+# Conferir
+Get-ScheduledTask -TaskName "CopaAnalyst-IngestaoDiaria"
+# Rodar manualmente agora
+Start-ScheduledTask -TaskName "CopaAnalyst-IngestaoDiaria"
+# Remover
+Unregister-ScheduledTask -TaskName "CopaAnalyst-IngestaoDiaria" -Confirm:$false
+```
+
+> A tarefa diária NÃO re-scrapeia Wikipedia/openfootball (dados estáticos). Para
+> reconstruir tudo do zero, rode `python -m src.dados.ingestao inicial` manualmente.
+
 ## Rotina recomendada de um dia com vários jogos
 
 | Quando | Ação |
 |---|---|
-| Manhã | `python -m src.dados.ingestao atualizar` (resultados da véspera) |
-| Manhã | `python -m src.dados.ingestao inicial` (completa stats, respeita 100 req/dia) |
+| Automático (09:00) | Tarefa agendada: resultados + stats (respeita 100 req/dia) |
 | ~1–2h antes de cada jogo | Gerar análise pela UI (escalação fresca) |
 | Logo antes do apito | Marcar oficial (UI) **ou** `python -m src.relatorio.oficial auto <data>` |
-| Após cada jogo | `python -m src.dados.ingestao atualizar` |
+| Após cada jogo | `python -m src.dados.ingestao atualizar` (ou esperar a tarefa do dia seguinte) |
 | Fim do dia | Conferir página de Calibração |
 
 ---
@@ -90,6 +110,7 @@ python -m src.relatorio.oficial check <relatorio_id> # verifica se pode ser ofic
 
 # Dados
 python -m src.dados.ingestao atualizar              # resultados Copa 2026 (TheSportsDB)
-python -m src.dados.ingestao inicial                # stats históricas (API-Football, cache-first)
+python -m src.dados.ingestao stats                  # só stats (API-Football, cache-first) — usado na tarefa diária
+python -m src.dados.ingestao inicial                # ingestão completa (re-scrape Wikipedia/openfootball + Elo + stats)
 python -m src.dados.ingestao listar                 # lista jogos Copa 2026
 ```
