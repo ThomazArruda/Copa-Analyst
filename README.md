@@ -68,6 +68,19 @@ clique em "Gerar análise" e aguarde ~30–60s.
 > Para desenvolver a UI sem gastar chamadas pagas da API Anthropic, defina
 > `MOCK_AI=true` no `.env`. Remova-o para gerar análises reais.
 
+### Deploy simples (um processo só)
+
+Para rodar o produto inteiro num único processo (o FastAPI serve a API **e** a UI
+buildada — ideal para o dia de jogo, sem precisar do Vite aberto):
+
+```bash
+cd web && npm run build && cd ..        # gera web/dist
+python -m uvicorn src.api.main:app --port 8000
+```
+
+Acesse **http://localhost:8000** — API e interface no mesmo endereço. Se `web/dist`
+não existir, o backend roda só a API e avisa no log.
+
 ## Comandos de linha de comando (dados)
 
 ```bash

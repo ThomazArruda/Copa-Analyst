@@ -19,6 +19,8 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 logging.basicConfig(level=logging.WARNING)
@@ -447,3 +449,29 @@ def top_elo(n: int = 10):
         {"nome": t.nome, "elo": round(t.rating_prior, 1), "grupo": t.grupo_copa26}
         for t in com_elo[:n]
     ]
+
+
+# ---------------------------------------------------------------------------
+# Frontend estático (deploy simples: um único uvicorn serve API + UI)
+# Servido apenas se `web/dist` existir (rodar `npm run build` em web/).
+# Registrado por último → as rotas /api/* têm precedência.
+# ---------------------------------------------------------------------------
+
+_web_dist = _root / "web" / "dist"
+if _web_dist.exists():
+    _assets = _web_dist / "assets"
+    if _assets.exists():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+
+    @app.get("/{full_path:path}")
+    def servir_spa(full_path: str):
+        """Serve arquivos de web/dist; faz fallback para index.html (SPA client-side routing).
+        Não intercepta /api (rotas registradas antes têm precedência)."""
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        candidato = _web_dist / full_path
+        if full_path and candidato.is_file():
+            return FileResponse(str(candidato))
+        return FileResponse(str(_web_dist / "index.html"))
+else:
+    logger.warning("web/dist não encontrado — rode 'npm run build' em web/ para servir a UI pelo FastAPI.")
