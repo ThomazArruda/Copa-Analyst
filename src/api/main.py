@@ -390,6 +390,7 @@ def calibracao():
 # ---------------------------------------------------------------------------
 
 _gerando: dict[int, bool] = {}
+_erro_geracao: dict[int, str] = {}  # último erro de geração por jogo (UI mostra)
 
 @app.post("/api/jogos/{jogo_id}/gerar-relatorio")
 def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks, modelo: str = None):
@@ -398,14 +399,20 @@ def gerar_relatorio(jogo_id: int, background_tasks: BackgroundTasks, modelo: str
     if _gerando.get(jogo_id):
         return {"ok": False, "msg": "Análise já em andamento para este jogo."}
     _gerando[jogo_id] = True
+    _erro_geracao.pop(jogo_id, None)
 
     def _run():
         try:
             from src.ia.sintese import analisar_jogo
             repo = get_repo()
-            analisar_jogo(jogo_id, repo, modelo=modelo)
-        except Exception:
+            res = analisar_jogo(jogo_id, repo, modelo=modelo)
+            if not res.get("sucesso"):
+                erros = res.get("erros") or ["falha desconhecida na síntese"]
+                _erro_geracao[jogo_id] = "; ".join(erros)
+                logger.error("Análise do jogo %d falhou: %s", jogo_id, erros)
+        except Exception as e:
             logger.exception("Erro na análise do jogo %d", jogo_id)
+            _erro_geracao[jogo_id] = f"Erro inesperado: {e}"
         finally:
             _gerando.pop(jogo_id, None)
 
@@ -438,14 +445,16 @@ def buscar_relatorio(jogo_id: int):
         conn.close()
 
         gerando = _gerando.get(jogo_id, False)
+        erro = _erro_geracao.get(jogo_id)
 
         if row is None:
-            return {"ok": True, "relatorio": None, "historico": [], "gerando": gerando}
+            return {"ok": True, "relatorio": None, "historico": [], "gerando": gerando, "erro": erro}
 
         conteudo = json.loads(row["conteudo"]) if row["conteudo"] else {}
         return {
             "ok": True,
             "gerando": gerando,
+            "erro": erro,
             "relatorio": {
                 "id": row["id"],
                 "jogo_id": row["jogo_id"],

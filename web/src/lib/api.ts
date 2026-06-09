@@ -122,6 +122,7 @@ export interface Relatorio {
 export interface RelatorioResponse {
   ok: boolean
   gerando: boolean
+  erro?: string | null
   relatorio: Relatorio | null
   historico: { id: number; gerado_em: string; oficial: boolean }[]
 }

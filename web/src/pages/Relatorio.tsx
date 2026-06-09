@@ -273,6 +273,18 @@ export default function Relatorio() {
         </div>
       )}
 
+      {/* Estado: falha na geração */}
+      {!gerando && relData?.erro && (
+        <div className="flex items-start gap-3 text-[#f85149] bg-[#f851491a] border border-[#f8514930] rounded-xl px-5 py-4 mb-6">
+          <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
+          <div>
+            <div className="font-semibold text-sm">A análise falhou</div>
+            <div className="text-xs mt-0.5 text-[#8b949e]">{relData.erro}</div>
+            <div className="text-xs mt-1 text-[#8b949e]">Tente "Nova análise" novamente. Se persistir, pode ser o limite da API.</div>
+          </div>
+        </div>
+      )}
+
       {/* Estado: sem relatório */}
       {!loadingRel && !gerando && !rel && jogoId && (
         <div className="flex flex-col items-center justify-center py-24 text-[#8b949e]">

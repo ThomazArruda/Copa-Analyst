@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 MODELO = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
 MAX_BUSCAS_SINTESE = 3
+# Folga para 7 mercados com justificativas (4096 truncava jogos "ricos" → JSON
+# cortado → falha de validação/repair). 8192 é seguro sem streaming.
+MAX_TOKENS_SINTESE = int(os.getenv("MAX_TOKENS_SINTESE", "8192"))
 PROMPT_VERSAO = "v1"
 
 # Apelidos de modelo aceitos pela API/UI (jogos importantes → Opus).
@@ -221,10 +224,12 @@ def _chamar_claude(sistema: str, contexto: str, modelo: str = None) -> str:
     resposta = criar_mensagem_com_retry(
         cliente,
         model=modelo or MODELO,
-        max_tokens=4096,
+        max_tokens=MAX_TOKENS_SINTESE,
         system=sistema,
         messages=[{"role": "user", "content": contexto}],
     )
+    if resposta.stop_reason == "max_tokens":
+        logger.warning("Síntese truncada (max_tokens) — JSON pode falhar na validação")
     return resposta.content[0].text if resposta.content else ""
 
 
@@ -323,7 +328,7 @@ Por favor, corrija e retorne APENAS o JSON válido, sem nenhum texto fora do blo
         resposta_repair = criar_mensagem_com_retry(
             cliente,
             model=modelo_usado,
-            max_tokens=4096,
+            max_tokens=MAX_TOKENS_SINTESE,
             system=sistema,
             messages=[
                 {"role": "user", "content": contexto},
