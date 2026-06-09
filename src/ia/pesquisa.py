@@ -15,7 +15,9 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 MODELO = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
-MAX_BUSCAS_PESQUISA = 6
+# 3 buscas cobrem escalação + lesões + árbitro de um jogo, mantêm o input
+# abaixo do limite de 30k tokens/min (evita 429) e reduzem o custo da web search.
+MAX_BUSCAS_PESQUISA = int(os.getenv("MAX_BUSCAS_PESQUISA", "3"))
 
 
 def _cliente() -> anthropic.Anthropic:
