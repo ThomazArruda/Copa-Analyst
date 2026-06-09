@@ -52,6 +52,9 @@ APP_PASSWORD = os.getenv("APP_PASSWORD")
 async def _basic_auth(request, call_next):
     if not APP_PASSWORD:
         return await call_next(request)
+    # Health check do host nunca exige senha (senão o deploy é marcado unhealthy)
+    if request.url.path == "/healthz":
+        return await call_next(request)
     from starlette.responses import Response
     header = request.headers.get("authorization", "")
     if header.startswith("Basic "):
@@ -261,6 +264,12 @@ def analise_completa(jogo_id: int):
 # ---------------------------------------------------------------------------
 # /api/status — status do banco
 # ---------------------------------------------------------------------------
+
+@app.get("/healthz")
+def healthz():
+    """Health check do host (sem autenticação)."""
+    return {"ok": True}
+
 
 @app.get("/api/status")
 def status_banco():

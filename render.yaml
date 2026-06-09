@@ -1,0 +1,23 @@
+# Render Blueprint — Copa Analyst (deploy de teste, plano free)
+# Uso: Render → New → Blueprint → conectar ThomazArruda/Copa-Analyst.
+# Render lê este arquivo, cria o serviço Docker e pede os secrets marcados sync:false.
+#
+# Free: sem cartão, dorme após ~15 min parado, disco efêmero (o banco-semente
+# repopula no boot). Para dados persistentes, troque plan para 'starter' e
+# adicione um disk em /data (ver docs/DEPLOY.md).
+services:
+  - type: web
+    name: copa-analyst
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # cole no dashboard (secret)
+      - key: API_FOOTBALL_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false          # senha de acesso ao site
+      - key: APP_USER
+        value: copa
