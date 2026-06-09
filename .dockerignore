@@ -1,0 +1,20 @@
+# Não enviar para o build context (mantém a imagem enxuta)
+.venv/
+venv/
+__pycache__/
+*.pyc
+.git/
+.github/
+web/node_modules/
+web/dist/
+dados/
+dados/cache/
+dados/logs/
+*.db
+!deploy/seed_db/copa_analyst.db
+.env
+.env.local
+.playwright-mcp/
+docs/
+scripts/
+*.md

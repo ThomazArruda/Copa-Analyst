@@ -5,6 +5,9 @@ Expõe toda a lógica Python existente como uma API REST.
 import os
 import sys
 import json
+import base64
+import secrets
+import shutil
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -34,6 +37,48 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ---------------------------------------------------------------------------
+# Autenticação básica (deploy público) — ativa apenas se APP_PASSWORD existir.
+# Protege UI + API com um usuário/senha compartilhado (grupo fechado).
+# Local (sem APP_PASSWORD) → desativada.
+# ---------------------------------------------------------------------------
+
+APP_USER = os.getenv("APP_USER", "copa")
+APP_PASSWORD = os.getenv("APP_PASSWORD")
+
+
+@app.middleware("http")
+async def _basic_auth(request, call_next):
+    if not APP_PASSWORD:
+        return await call_next(request)
+    from starlette.responses import Response
+    header = request.headers.get("authorization", "")
+    if header.startswith("Basic "):
+        try:
+            user, _, pw = base64.b64decode(header[6:]).decode("utf-8").partition(":")
+            if (secrets.compare_digest(user, APP_USER)
+                    and secrets.compare_digest(pw, APP_PASSWORD)):
+                return await call_next(request)
+        except Exception:
+            pass
+    return Response(
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Copa Analyst"'},
+        content="Autenticação necessária.",
+    )
+
+
+@app.on_event("startup")
+def _semear_banco():
+    """Em deploy com volume vazio, copia o banco-semente embarcado na imagem
+    para COPA_DB_PATH (uma vez). Local/dev: não faz nada se o banco já existe."""
+    db_path = Path(os.getenv("COPA_DB_PATH", "dados/copa_analyst.db"))
+    seed = _root / "deploy" / "seed_db" / "copa_analyst.db"
+    if not db_path.exists() and seed.exists():
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(seed, db_path)
+        logger.warning("Banco semeado a partir de %s → %s", seed, db_path)
 
 # ---------------------------------------------------------------------------
 # Dependências compartilhadas
