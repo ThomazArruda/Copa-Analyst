@@ -90,9 +90,11 @@ def _montar_contexto(
     def _fmt_medias(medias: dict) -> str:
         if not medias:
             return "  (sem dados)"
-        campos = ["escanteios", "chutes", "faltas", "cartoes_amarelos"]
+        campos = ["escanteios", "chutes", "chutes_no_alvo", "faltas",
+                  "cartoes_amarelos", "posse"]
         return "\n".join(
-            f"  {c}: {medias[c]:.1f}/jogo" for c in campos if c in medias
+            f"  {c}: {medias[c]:.1f}" + ("%" if c == "posse" else "/jogo")
+            for c in campos if c in medias
         )
 
     # Mercados secundários calculados
