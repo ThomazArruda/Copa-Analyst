@@ -103,7 +103,11 @@ def _montar_contexto(
                 linhas.append(f"  {nome}: AUSENTE (sem dados)")
             else:
                 probs_str = ", ".join(f">{k}: {v:.1%}" for k, v in list(prev.prob_linhas.items())[:3])
-                linhas.append(f"  {nome}: media={prev.media_esperada:.1f} | {probs_str}")
+                extra = ""
+                if getattr(prev, "parcial", False):
+                    # Um lado usou média global do torneio → maior incerteza
+                    extra = f" | PARCIAL ({prev.nota}) — trate com incerteza maior"
+                linhas.append(f"  {nome}: media={prev.media_esperada:.1f} | {probs_str}{extra}")
         return "\n".join(linhas) if linhas else "  (sem dados)"
 
     # Cabeçalho do jogo

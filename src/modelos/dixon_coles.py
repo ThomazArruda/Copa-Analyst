@@ -38,8 +38,24 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 DECAIMENTO_TEMPORAL = 0.005   # decaimento exponencial por jogo anterior
 SHRINKAGE_PRIOR     = 0.70    # 0=só dados, 1=só prior
-JANELA_FORMA        = 10      # últimos N jogos usados para estimar parâmetros
+SHRINKAGE_FLOOR     = 0.60    # piso: o Elo retém ≥60% mesmo com muitos jogos
+                              # (impede goleada intra-confederação de inflar ataque)
+JANELA_FORMA        = 40      # usa TODOS os jogos recentes (decaimento pondera os antigos)
 HA_REAL             = 0.25    # vantagem de casa em log-odds (anfitriões somente)
+
+# Peso por competição: Copa (cross-confederação) vale mais que qualificatória
+# (intra-confederação, força do adversário já no Elo) e amistoso. Nada é descartado.
+PESOS_COMPETICAO = {"copa_2026": 1.0, "copa_2022": 1.0}
+PESO_QUALIFICATORIA = 0.5
+PESO_AMISTOSO = 0.4
+
+
+def _peso_competicao(competicao: str) -> float:
+    if not competicao:
+        return PESO_QUALIFICATORIA
+    if competicao.startswith("amistos"):
+        return PESO_AMISTOSO
+    return PESOS_COMPETICAO.get(competicao, PESO_QUALIFICATORIA)
 RHO                 = -0.13   # parâmetro de dependência Dixon-Coles
 LOG_MEDIA_GOLS      = math.log(1.30)  # ln(média gols/time/jogo em Copas)
 ELO_SCALE           = 400.0   # Elo → parâmetro log-gols (mesmo da fórmula Elo)
@@ -119,30 +135,29 @@ class DixonColes:
         alpha_prior = self._elo_para_param(elo)
         beta_prior  = self._elo_para_param(elo)  # times fortes defendem bem também
 
-        # Usar APENAS jogos de Copa do Mundo para estimar alpha/beta.
-        # Qualificatórias inflam parâmetros por comparação intra-confederação
-        # (Morocco vs times fracos da CAF ≠ Morocco vs Brasil). PRD 7.1.
-        COPAS = {"copa_2022", "copa_2026"}
-        jogos_copa = [j for j in forma
-                      if j.placar_mandante is not None
-                      and j.placar_visitante is not None
-                      and j.competicao in COPAS]
+        # Usa TODOS os jogos disponíveis (Copa + qualificatórias + amistosos).
+        # Nenhum dado é descartado: cada jogo contribui com peso =
+        #   decaimento por recência × peso da competição.
+        # O risco de inflação intra-confederação (Brasil goleando a CONMEBOL) é
+        # contido pelo SHRINKAGE_FLOOR: o Elo — que já codifica a força do
+        # adversário — retém peso mínimo garantido. (PRD 7.1: usar os jogos
+        # disponíveis com regularização ao prior.)
+        jogos = [j for j in forma
+                 if j.placar_mandante is not None
+                 and j.placar_visitante is not None]
 
-        # Se não há dados de Copa → cold start puro (prior Elo)
-        jogos_com_placar = jogos_copa
-        if not jogos_com_placar:
+        if not jogos:
             return ParametrosTime(
                 nome=time.nome, elo=elo,
                 alpha=alpha_prior, beta=beta_prior,
                 n_jogos=0, cold_start=True,
             )
 
-        # Média ponderada por decaimento temporal
-        gols_pro   = []
+        gols_pro    = []
         gols_contra = []
-        pesos      = []
-        for i, jogo in enumerate(jogos_com_placar):
-            peso = math.exp(-DECAIMENTO_TEMPORAL * i)
+        pesos       = []
+        for i, jogo in enumerate(jogos):
+            peso = math.exp(-DECAIMENTO_TEMPORAL * i) * _peso_competicao(jogo.competicao)
             pesos.append(peso)
             if jogo.time_mandante_id == time_id_ref:
                 gols_pro.append(jogo.placar_mandante)
@@ -151,20 +166,19 @@ class DixonColes:
                 gols_pro.append(jogo.placar_visitante)
                 gols_contra.append(jogo.placar_mandante)
 
-        soma_pesos = sum(pesos)
-        media_pro   = sum(g * p for g, p in zip(gols_pro,   pesos)) / soma_pesos
+        soma_pesos   = sum(pesos)
+        media_pro    = sum(g * p for g, p in zip(gols_pro,    pesos)) / soma_pesos
         media_contra = sum(g * p for g, p in zip(gols_contra, pesos)) / soma_pesos
 
         # Parâmetros observados em log-space centrado
         alpha_obs = math.log(max(media_pro,   0.05)) - LOG_MEDIA_GOLS
         beta_obs  = math.log(max(media_contra, 0.05)) - LOG_MEDIA_GOLS
-        # beta é "quão difícil é de marcar contra este time":
-        # time forte concede poucos gols → beta_obs alto
-        beta_obs = -beta_obs  # inverter: menor concessão = maior defesa
+        beta_obs  = -beta_obs  # menor concessão = maior defesa
 
-        # Shrinkage: mais jogos → menos shrinkage
-        n = len(jogos_com_placar)
-        s = max(0.0, SHRINKAGE_PRIOR * math.exp(-n / 5))
+        # n efetivo = soma dos pesos. Shrinkage decai com mais dados, mas nunca
+        # abaixo do piso (Elo sempre retém ≥ SHRINKAGE_FLOOR).
+        n_eff = soma_pesos
+        s = max(SHRINKAGE_FLOOR, SHRINKAGE_PRIOR * math.exp(-n_eff / 5))
 
         alpha = s * alpha_prior + (1 - s) * alpha_obs
         beta  = s * beta_prior  + (1 - s) * beta_obs
@@ -172,7 +186,7 @@ class DixonColes:
         return ParametrosTime(
             nome=time.nome, elo=elo,
             alpha=alpha, beta=beta,
-            n_jogos=n, cold_start=(n < 3),
+            n_jogos=len(jogos), cold_start=(n_eff < 3),
         )
 
     # --- Correção τ de Dixon-Coles ---
@@ -329,10 +343,18 @@ class DixonColes:
         if not time_m or not time_v:
             raise ValueError("Pacote sem time_mandante ou time_visitante")
 
-        # Forma combinada: Copa 2026 primeiro (mais recente), depois forma geral
-        forma_m = (pacote["forma_copa"]["mandante"]
-                   + pacote["forma_recente"]["mandante"])[:JANELA_FORMA]
-        forma_v = (pacote["forma_copa"]["visitante"]
-                   + pacote["forma_recente"]["visitante"])[:JANELA_FORMA]
+        # Forma combinada: Copa 2026 primeiro (mais recente), depois forma geral.
+        # Dedup por id (jogos de Copa aparecem nas duas listas) preservando ordem.
+        def _combinar(copa, recente):
+            vistos = set()
+            out = []
+            for j in copa + recente:
+                if j.id not in vistos:
+                    vistos.add(j.id)
+                    out.append(j)
+            return out[:JANELA_FORMA]
+
+        forma_m = _combinar(pacote["forma_copa"]["mandante"], pacote["forma_recente"]["mandante"])
+        forma_v = _combinar(pacote["forma_copa"]["visitante"], pacote["forma_recente"]["visitante"])
 
         return self.prever(jogo, time_m, time_v, forma_m, forma_v)

@@ -326,9 +326,10 @@ def pacote_jogo(jogo_id: int) -> dict:
     if not forma_copa_m and not forma_copa_v:
         ausentes.append("Forma na Copa 2026: nenhum jogo disputado ainda (primeira rodada)")
 
-    # Forma recente (todas as competições disponíveis)
-    forma_recente_m = repo.jogos_de_time(jogo.time_mandante_id, COMPETICOES_FORMA, limite=10)
-    forma_recente_v = repo.jogos_de_time(jogo.time_visitante_id, COMPETICOES_FORMA, limite=10)
+    # Forma recente (todas as competições disponíveis). Limite alto: o modelo usa
+    # todos os jogos com decaimento por recência (nada é descartado).
+    forma_recente_m = repo.jogos_de_time(jogo.time_mandante_id, COMPETICOES_FORMA, limite=30)
+    forma_recente_v = repo.jogos_de_time(jogo.time_visitante_id, COMPETICOES_FORMA, limite=30)
     if not forma_recente_m:
         ausentes.append(f"Forma recente ausente: {time_m.nome if time_m else 'mandante'}")
     if not forma_recente_v:
@@ -370,6 +371,7 @@ def pacote_jogo(jogo_id: int) -> dict:
             "mandante": medias_m,
             "visitante": medias_v,
         },
+        "medias_globais": medias_globais(repo),
         "fatores_ausentes": ausentes,
     }
 
@@ -387,6 +389,33 @@ def _calcular_medias(stats: list[dict]) -> dict:
         if valores:
             medias[campo] = round(sum(valores) / len(valores), 2)
     return medias
+
+
+_MEDIAS_GLOBAIS_CACHE = None
+
+def medias_globais(repo: Repositorio = None) -> dict:
+    """
+    Médias globais por time/jogo de cada mercado, sobre TODAS as estatísticas
+    coletadas. Servem de prior quando falta o dado de um time específico —
+    assim nenhum dado é desperdiçado e nenhum mercado fica vazio à toa.
+    Cacheado (estável durante a execução).
+    """
+    global _MEDIAS_GLOBAIS_CACHE
+    if _MEDIAS_GLOBAIS_CACHE is not None:
+        return _MEDIAS_GLOBAIS_CACHE
+    repo = repo or _get_repo()
+    campos = ["escanteios", "chutes", "chutes_no_alvo", "faltas",
+              "cartoes_amarelos", "posse"]
+    out = {}
+    with repo._conn() as conn:
+        for campo in campos:
+            row = conn.execute(
+                f"SELECT AVG({campo}) FROM estatisticas_jogo WHERE {campo} IS NOT NULL"
+            ).fetchone()
+            if row and row[0] is not None:
+                out[campo] = round(float(row[0]), 2)
+    _MEDIAS_GLOBAIS_CACHE = out
+    return out
 
 
 # ---------------------------------------------------------------------------

@@ -194,11 +194,41 @@ Estratégia em dois passos:
 
 ---
 
+## Decisão 12 — Uso pleno dos dados (zero desperdício) ✅ DECIDIDO
+
+**Princípio do usuário:** todo dado coletado deve contribuir nos cálculos; nada fica sem uso.
+
+**Motor de gols (Dixon-Coles):** antes estimava ataque/defesa **só com jogos de Copa**,
+deixando ~38 seleções em cold-start (só Elo) apesar de terem dezenas de jogos de
+qualificatória no banco. Agora usa **todos** os jogos disponíveis (Copa + qualificatórias
++ amistosos), cada um com peso = `decaimento por recência × peso da competição`:
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| `SHRINKAGE_FLOOR` | 0.60 | Elo retém ≥60% mesmo com muitos jogos (impede inflação intra-confederação) |
+| `PESO copa` | 1.0 | jogo de Copa (sinal cross-confederação) |
+| `PESO_QUALIFICATORIA` | 0.5 | qualificatória (força do adversário já no Elo) |
+| `PESO_AMISTOSO` | 0.4 | amistoso |
+| `JANELA_FORMA` | 40 | usa todos os jogos recentes (decaimento pondera os antigos) |
+
+Fiel ao PRD 7.1 ("usar os jogos disponíveis com regularização ao prior"). Validado em
+jogos reais: cold-start eliminado, favoritos favorecidos proporcionalmente ao Elo,
+nenhum λ explode. **A recalibrar com dados históricos pós-Fase 2.**
+
+**Mercados secundários:** antes marcava "ausente" se **qualquer** lado faltasse dado.
+Agora usa o dado real de cada time onde existe e cai num **prior global** (média do
+torneio sobre todas as stats coletadas) onde falta — produzindo previsão **parcial**
+(rotulada, com incerteza maior) em vez de vazia. Ex.: México×África do Sul usa as stats
+do México + prior para a SA.
+
+---
+
 ## Log de Mudanças
 
 | Data | Decisão | O quê mudou |
 |---|---|---|
 | 2026-06-04 | Todas | Criação inicial do documento |
+| 2026-06-09 | 12 | Dixon-Coles usa todos os jogos (não só Copa) com piso de shrinkage; mercados usam prior global para lados sem dado. Zero desperdício de dados. |
 | 2026-06-04 | 1 | Decidido: eloratings.net + Elo de openfootball. Club Elo descartado (não cobre seleções nacionais) |
 | 2026-06-04 | 2 | Decidido: free tier bloqueia 2025/2026. Copa 2026 via openfootball. Stats disponíveis para 2022-2024 |
 | 2026-06-04 | 11 | Decidido: arquitetura de fontes 100% gratuita (ver Decisão 11) |

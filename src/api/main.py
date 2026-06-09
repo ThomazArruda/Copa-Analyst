@@ -246,6 +246,8 @@ def analise_completa(jogo_id: int):
                     "prob_linhas": {str(kk): vv for kk, vv in m.prob_linhas.items()},
                     "intervalo_80pct": list(m.intervalo_80pct),
                     "ausente": m.ausente,
+                    "parcial": getattr(m, "parcial", False),
+                    "nota": getattr(m, "nota", ""),
                 }
                 for k, m in mercados.items()
             },

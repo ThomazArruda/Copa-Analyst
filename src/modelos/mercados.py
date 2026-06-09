@@ -30,7 +30,9 @@ class PrevisaoMercadoSecundario:
     intervalo_80pct: tuple = (0, 0)  # intervalo de credibilidade 80%
     n_jogos_m: int = 0         # jogos com dados do mandante
     n_jogos_v: int = 0         # jogos com dados do visitante
-    ausente: bool = False      # True = não há dados suficientes
+    ausente: bool = False      # True = não há NENHUMA base (nem prior global)
+    parcial: bool = False      # True = um ou ambos os lados usaram prior global
+    nota: str = ""             # explicação (ex.: "Marrocos via média global")
 
 
 def _calcular_distribuicao(media: float, linhas: list[float]) -> dict:
@@ -67,137 +69,82 @@ def _media_com_ajuste_arbitro(
 
 
 # ---------------------------------------------------------------------------
-# Funções públicas por mercado
+# Núcleo: resolve o valor de cada lado (dado real do time OU prior global)
 # ---------------------------------------------------------------------------
 
-def prever_escanteios(
-    medias_m: dict, medias_v: dict
-) -> PrevisaoMercadoSecundario:
-    """
-    Escanteios totais no jogo: soma das médias de cada time.
-    Linhas típicas: 7.5, 8.5, 9.5, 10.5, 11.5
-    """
-    val_m = medias_m.get("escanteios")
-    val_v = medias_v.get("escanteios")
+def _lado(medias: dict, campo: str, globais: dict, nome: str):
+    """Retorna (valor, usou_prior, rotulo). Usa o dado do time; se faltar,
+    cai no prior global (média do torneio). None só se nem o prior existir."""
+    v = medias.get(campo)
+    if v is not None:
+        return v, False, None
+    g = (globais or {}).get(campo)
+    if g is not None:
+        return g, True, f"{nome} via média global"
+    return None, False, None
 
-    if val_m is None or val_v is None:
-        return PrevisaoMercadoSecundario(
-            mercado="escanteios", media_esperada=0.0,
-            ausente=True,
-        )
 
-    media = val_m + val_v
-    linhas = [7.5, 8.5, 9.5, 10.5, 11.5]
-
+def _montar(mercado, valor_total, linhas, usou_m, usou_v, rot_m, rot_v,
+            n_m, n_v) -> PrevisaoMercadoSecundario:
+    parcial = usou_m or usou_v
+    notas = [r for r in (rot_m, rot_v) if r]
     return PrevisaoMercadoSecundario(
-        mercado="escanteios",
-        media_esperada=round(media, 2),
-        prob_linhas=_calcular_distribuicao(media, linhas),
-        intervalo_80pct=_intervalo_credibilidade(media),
-        n_jogos_m=medias_m.get("_n", 0),
-        n_jogos_v=medias_v.get("_n", 0),
-        ausente=False,
+        mercado=mercado,
+        media_esperada=round(valor_total, 2),
+        prob_linhas=_calcular_distribuicao(valor_total, linhas),
+        intervalo_80pct=_intervalo_credibilidade(valor_total),
+        n_jogos_m=n_m, n_jogos_v=n_v,
+        ausente=False, parcial=parcial,
+        nota="; ".join(notas),
     )
 
 
-def prever_cartoes_amarelos(
-    medias_m: dict, medias_v: dict,
-    fator_arbitro: Optional[float] = None,
-) -> PrevisaoMercadoSecundario:
-    """
-    Cartões amarelos totais. Árbitro é o fator mais importante (PRD 7.2).
-    Linhas típicas: 2.5, 3.5, 4.5, 5.5
-    """
-    val_m = medias_m.get("cartoes_amarelos")
-    val_v = medias_v.get("cartoes_amarelos")
+# ---------------------------------------------------------------------------
+# Funções públicas por mercado — usam o dado disponível + prior global
+# ---------------------------------------------------------------------------
 
-    if val_m is None or val_v is None:
-        return PrevisaoMercadoSecundario(
-            mercado="cartoes_amarelos", media_esperada=0.0,
-            ausente=True,
-        )
-
-    media_base = val_m + val_v
-    media = _media_com_ajuste_arbitro(media_base, fator_arbitro)
-    linhas = [2.5, 3.5, 4.5, 5.5]
-
-    return PrevisaoMercadoSecundario(
-        mercado="cartoes_amarelos",
-        media_esperada=round(media, 2),
-        prob_linhas=_calcular_distribuicao(media, linhas),
-        intervalo_80pct=_intervalo_credibilidade(media),
-        n_jogos_m=medias_m.get("_n", 0),
-        n_jogos_v=medias_v.get("_n", 0),
-        ausente=False,
-    )
+def prever_escanteios(medias_m, medias_v, globais=None) -> PrevisaoMercadoSecundario:
+    vm, um, rm = _lado(medias_m, "escanteios", globais, "mandante")
+    vv, uv, rv = _lado(medias_v, "escanteios", globais, "visitante")
+    if vm is None or vv is None:
+        return PrevisaoMercadoSecundario(mercado="escanteios", media_esperada=0.0, ausente=True)
+    return _montar("escanteios", vm + vv, [7.5, 8.5, 9.5, 10.5, 11.5],
+                   um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
-def prever_faltas(
-    medias_m: dict, medias_v: dict,
-    fator_arbitro: Optional[float] = None,
-) -> PrevisaoMercadoSecundario:
-    """
-    Faltas totais. Linhas típicas: 20.5, 24.5, 28.5
-    """
-    val_m = medias_m.get("faltas")
-    val_v = medias_v.get("faltas")
-
-    if val_m is None or val_v is None:
-        return PrevisaoMercadoSecundario(
-            mercado="faltas", media_esperada=0.0,
-            ausente=True,
-        )
-
-    media_base = val_m + val_v
-    media = _media_com_ajuste_arbitro(media_base, fator_arbitro)
-    linhas = [20.5, 24.5, 28.5]
-
-    return PrevisaoMercadoSecundario(
-        mercado="faltas",
-        media_esperada=round(media, 2),
-        prob_linhas=_calcular_distribuicao(media, linhas),
-        intervalo_80pct=_intervalo_credibilidade(media),
-        n_jogos_m=medias_m.get("_n", 0),
-        n_jogos_v=medias_v.get("_n", 0),
-        ausente=False,
-    )
+def prever_cartoes_amarelos(medias_m, medias_v, fator_arbitro=None, globais=None) -> PrevisaoMercadoSecundario:
+    vm, um, rm = _lado(medias_m, "cartoes_amarelos", globais, "mandante")
+    vv, uv, rv = _lado(medias_v, "cartoes_amarelos", globais, "visitante")
+    if vm is None or vv is None:
+        return PrevisaoMercadoSecundario(mercado="cartoes_amarelos", media_esperada=0.0, ausente=True)
+    media = _media_com_ajuste_arbitro(vm + vv, fator_arbitro)
+    return _montar("cartoes_amarelos", media, [2.5, 3.5, 4.5, 5.5],
+                   um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
-def prever_chutes(
-    medias_m: dict, medias_v: dict,
-    lado: str = "total",  # 'total' | 'mandante' | 'visitante'
-) -> PrevisaoMercadoSecundario:
-    """
-    Chutes totais ou por time. Linhas típicas: 10.5, 13.5, 16.5 (total)
-    """
-    val_m = medias_m.get("chutes")
-    val_v = medias_v.get("chutes")
+def prever_faltas(medias_m, medias_v, fator_arbitro=None, globais=None) -> PrevisaoMercadoSecundario:
+    vm, um, rm = _lado(medias_m, "faltas", globais, "mandante")
+    vv, uv, rv = _lado(medias_v, "faltas", globais, "visitante")
+    if vm is None or vv is None:
+        return PrevisaoMercadoSecundario(mercado="faltas", media_esperada=0.0, ausente=True)
+    media = _media_com_ajuste_arbitro(vm + vv, fator_arbitro)
+    return _montar("faltas", media, [20.5, 24.5, 28.5],
+                   um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
-    if val_m is None and val_v is None:
-        return PrevisaoMercadoSecundario(
-            mercado="chutes_time", media_esperada=0.0,
-            ausente=True,
-        )
 
+def prever_chutes(medias_m, medias_v, lado="total", globais=None) -> PrevisaoMercadoSecundario:
+    vm, um, rm = _lado(medias_m, "chutes", globais, "mandante")
+    vv, uv, rv = _lado(medias_v, "chutes", globais, "visitante")
+    if vm is None and vv is None:
+        return PrevisaoMercadoSecundario(mercado="chutes_time", media_esperada=0.0, ausente=True)
     if lado == "mandante":
-        media = val_m or 0
-        linhas = [3.5, 5.5, 7.5]
-    elif lado == "visitante":
-        media = val_v or 0
-        linhas = [3.5, 5.5, 7.5]
-    else:
-        media = (val_m or 0) + (val_v or 0)
-        linhas = [10.5, 13.5, 16.5, 19.5]
-
-    return PrevisaoMercadoSecundario(
-        mercado="chutes_time",
-        media_esperada=round(media, 2),
-        prob_linhas=_calcular_distribuicao(media, linhas),
-        intervalo_80pct=_intervalo_credibilidade(media),
-        n_jogos_m=medias_m.get("_n", 0),
-        n_jogos_v=medias_v.get("_n", 0),
-        ausente=(media == 0),
-    )
+        return _montar("chutes_time", vm or 0, [3.5, 5.5, 7.5], um, False, rm, None,
+                       medias_m.get("_n", 0), 0)
+    if lado == "visitante":
+        return _montar("chutes_time", vv or 0, [3.5, 5.5, 7.5], False, uv, None, rv,
+                       0, medias_v.get("_n", 0))
+    return _montar("chutes_time", (vm or 0) + (vv or 0), [10.5, 13.5, 16.5, 19.5],
+                   um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
 # ---------------------------------------------------------------------------
@@ -213,20 +160,17 @@ def calcular_mercados_secundarios(
     Calcula todos os mercados secundários a partir do pacote de ingestão.
     Retorna dict mercado → PrevisaoMercadoSecundario.
     """
-    medias_m = pacote["medias_stats"]["mandante"]
-    medias_v = pacote["medias_stats"]["visitante"]
-
-    # Adicionar contagem de jogos às médias
     stats_m = pacote["medias_stats"]["mandante"].copy()
     stats_v = pacote["medias_stats"]["visitante"].copy()
+    globais = pacote.get("medias_globais") or {}
 
     return {
-        "escanteios":      prever_escanteios(stats_m, stats_v),
+        "escanteios":      prever_escanteios(stats_m, stats_v, globais),
         "cartoes_amarelos": prever_cartoes_amarelos(
-            stats_m, stats_v, fator_arbitro_cartoes
+            stats_m, stats_v, fator_arbitro_cartoes, globais
         ),
         "faltas":          prever_faltas(
-            stats_m, stats_v, fator_arbitro_faltas
+            stats_m, stats_v, fator_arbitro_faltas, globais
         ),
-        "chutes_time":     prever_chutes(stats_m, stats_v, lado="total"),
+        "chutes_time":     prever_chutes(stats_m, stats_v, lado="total", globais=globais),
     }
