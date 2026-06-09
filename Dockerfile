@@ -3,7 +3,8 @@
 FROM node:20-slim AS frontend
 WORKDIR /web
 COPY web/package*.json ./
-RUN npm ci
+# npm install (não 'ci'): tolerante a lockfile dessincronizado — robusto para o deploy
+RUN npm install --no-audit --no-fund
 COPY web/ ./
 RUN npm run build      # gera /web/dist
 
