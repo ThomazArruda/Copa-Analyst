@@ -10,10 +10,10 @@ partida é `id_do_banco - 28` (grupos = 1-72, R32 = 73-88, ... final = 104).
 
 import math
 import logging
-import random
 from collections import defaultdict
 
 import numpy as np
+from scipy.stats import poisson as _poisson
 
 from src.db.repositorio import Repositorio
 from src.modelos.dixon_coles import (
@@ -295,4 +295,120 @@ def simular_torneio(repo: Repositorio = None, n: int = 10000, seed: int = 42) ->
         "n_simulacoes": n,
         "grupos": {g: grupos_out[g] for g in sorted(grupos_out)},
         "favoritos": titulo,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Chaveamento provável (determinístico: em cada jogo avança o favorito)
+# ---------------------------------------------------------------------------
+
+def _grid_1x2(params, h, a, neutro):
+    lam, mu = _lambdas(params, h, a, neutro)
+    ph = [_poisson.pmf(i, lam) for i in range(10)]
+    pa = [_poisson.pmf(j, mu) for j in range(10)]
+    pw = sum(ph[i] * pa[j] for i in range(10) for j in range(10) if i > j)
+    pe = sum(ph[i] * pa[i] for i in range(10))
+    pl = 1.0 - pw - pe
+    return pw, pe, pl
+
+
+def bracket_provavel(repo: Repositorio = None) -> dict:
+    """Caminho mais provável do torneio: classifica os grupos por pontos esperados
+    e, em cada jogo do mata-mata, avança o favorito. Devolve a árvore do chaveamento."""
+    from src.dados.ingestao import _get_repo
+    repo = repo or _get_repo()
+    est = _carregar(repo)
+    est["slots_terceiros"] = _slots_terceiros(est["mata"])
+    params = est["params"]; nome = est["nome_por_id"]
+
+    # --- Grupos: pontos esperados ---
+    pts = {g: {tid: 0.0 for tid in ids} for g, ids in est["grupos"].items()}
+    for g, hid, aid, neutro in est["jogos_grupo"]:
+        pw, pe, pl = _grid_1x2(params, hid, aid, neutro)
+        pts[g][hid] += 3 * pw + pe
+        pts[g][aid] += 3 * pl + pe
+
+    def elo(tid):
+        return params[tid][3]
+
+    pos = {}; terceiros = []
+    for g, teams in pts.items():
+        rank = sorted(teams.items(), key=lambda kv: (kv[1], elo(kv[0])), reverse=True)
+        pos[f"1{g}"] = rank[0][0]; pos[f"2{g}"] = rank[1][0]
+        terceiros.append((g, rank[2][0], rank[2][1]))
+    terceiros.sort(key=lambda x: (x[2], elo(x[1])), reverse=True)
+    melhores = terceiros[:8]
+    tid_por_grupo3 = {g: tid for g, tid, _ in melhores}
+    atrib = _atribuir_terceiros(est["slots_terceiros"], [g for g, _, _ in melhores])
+    for (num, lado), g in atrib.items():
+        pos[est["mata"][num][lado]] = tid_por_grupo3[g]
+
+    # --- Topologia da árvore a partir das referências W{n} ---
+    filhos = {}  # num -> (num_home_child|None, num_away_child|None)
+    for num, m in est["mata"].items():
+        def child(ph):
+            return int(ph[1:]) if ph and ph[0] in "WL" and ph[1:].isdigit() else None
+        filhos[num] = (child(m["home"]), child(m["away"]))
+
+    vencedor = {}; perdedor = {}; registro = {}
+    def resolve(ph):
+        if ph in pos: return pos[ph]
+        if ph and ph[0] == "W": return vencedor.get(int(ph[1:]))
+        if ph and ph[0] == "L": return perdedor.get(int(ph[1:]))
+        return None
+
+    for num in sorted(est["mata"]):  # ordem crescente = R32→...→final
+        m = est["mata"][num]
+        h = resolve(m["home"]); a = resolve(m["away"])
+        if h is None or a is None:
+            continue
+        pw, pe, pl = _grid_1x2(params, h, a, True)
+        w, l = (h, a) if pw >= pl else (a, h)
+        vencedor[num] = w; perdedor[num] = l
+        registro[num] = {"home": nome[h], "away": nome[a], "winner": nome[w]}
+
+    # --- Ordena cada lado por posição na árvore (índice da folha R32) ---
+    def folhas(num):
+        ch = filhos.get(num, (None, None))
+        if ch[0] is None and ch[1] is None:
+            return [num]
+        out = []
+        for c in ch:
+            out += folhas(c) if c is not None else []
+        return out
+
+    final_num = max(est["mata"])  # 104
+    sf_h, sf_a = filhos[final_num]  # SF esquerda/direita
+
+    def rounds_do_lado(root):
+        ordem_folhas = folhas(root)
+        idx = {n: i for i, n in enumerate(ordem_folhas)}
+        # agrupa por rodada (profundidade) usando o tamanho do subtree
+        por_rodada = defaultdict(list)
+        def visita(num):
+            ch = filhos.get(num, (None, None))
+            if ch[0] is None and ch[1] is None:
+                por_rodada[0].append((idx[num], num)); return 0
+            d = 1 + max(visita(c) for c in ch if c is not None)
+            minidx = min(idx[f] for f in folhas(num))
+            por_rodada[d].append((minidx, num)); return d
+        visita(root)
+        rodadas = []
+        for d in sorted(por_rodada):
+            ms = [registro.get(n) for _, n in sorted(por_rodada[d])]
+            rodadas.append(ms)
+        return rodadas  # [R32, R16, QF, SF]
+
+    # 3º lugar
+    terc = None
+    for num, m in est["mata"].items():
+        if m["fase"] == "3O" and num in registro:
+            terc = registro[num]
+
+    return {
+        "campeao": registro.get(final_num, {}).get("winner"),
+        "final": registro.get(final_num),
+        "terceiro": terc,
+        "esq": rounds_do_lado(sf_h),
+        "dir": rounds_do_lado(sf_a),
     }

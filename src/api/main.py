@@ -285,8 +285,14 @@ def bolao(refresh: bool = False, n: int = 10000):
     em memória (recalcula com ?refresh=true)."""
     global _bolao_cache
     if _bolao_cache is None or refresh:
-        from src.modelos.bolao import simular_torneio
-        _bolao_cache = simular_torneio(get_repo(), n=n)
+        from src.modelos.bolao import simular_torneio, bracket_provavel
+        res = simular_torneio(get_repo(), n=n)
+        try:
+            res["bracket"] = bracket_provavel(get_repo())
+        except Exception:
+            logger.exception("Falha ao montar bracket")
+            res["bracket"] = None
+        _bolao_cache = res
     return _bolao_cache
 
 

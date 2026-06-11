@@ -171,10 +171,19 @@ export interface BolaoFavorito {
   p_oitavas: number
   p_avanca: number
 }
+export interface BracketMatch { home: string; away: string; winner: string }
+export interface BracketData {
+  campeao: string | null
+  final: BracketMatch | null
+  terceiro: BracketMatch | null
+  esq: (BracketMatch | null)[][]
+  dir: (BracketMatch | null)[][]
+}
 export interface BolaoResponse {
   n_simulacoes: number
   grupos: Record<string, BolaoGrupoLinha[]>
   favoritos: BolaoFavorito[]
+  bracket?: BracketData | null
 }
 
 export const api = {
