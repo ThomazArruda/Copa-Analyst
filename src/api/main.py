@@ -83,6 +83,20 @@ def _semear_banco():
         shutil.copy(seed, db_path)
         logger.warning("Banco semeado a partir de %s → %s", seed, db_path)
 
+    # Auto-puxa os resultados da Copa 2026 no boot (em background, não bloqueia).
+    # Garante que o site fique com os resultados atuais mesmo no free tier, onde o
+    # banco é efêmero e volta ao seed quando a instância dorme/reinicia.
+    import threading
+    def _pull_resultados():
+        try:
+            from src.dados.ingestao import atualizar_resultados_copa26
+            n = atualizar_resultados_copa26()
+            if n:
+                logger.warning("Startup: %d resultados da Copa 2026 atualizados", n)
+        except Exception:
+            logger.exception("Startup: falha ao puxar resultados")
+    threading.Thread(target=_pull_resultados, daemon=True).start()
+
 # ---------------------------------------------------------------------------
 # Dependências compartilhadas
 # ---------------------------------------------------------------------------
@@ -341,11 +355,12 @@ def atualizar_resultados(background_tasks: BackgroundTasks):
     _atualizando = True
 
     def _run():
-        global _atualizando
+        global _atualizando, _bolao_cache
         try:
             from src.dados.ingestao import atualizar_resultados_copa26
             n = atualizar_resultados_copa26()
             logger.info("Copa 2026: %d resultados atualizados", n)
+            _bolao_cache = None  # invalida o bolão → recalcula com os novos resultados
         finally:
             _atualizando = False
 
