@@ -34,7 +34,7 @@ function FormaRow({ data, mandante, visitante, placar_m, placar_v, competicao }:
   )
 }
 
-function MercadoCard({ nome, mercado }: { nome: string; mercado: { media_esperada: number; prob_linhas: Record<string, number>; intervalo_80pct: [number, number]; ausente: boolean } }) {
+function MercadoCard({ nome, mercado }: { nome: string; mercado: import('../lib/api').Mercado }) {
   const labels: Record<string, string> = {
     escanteios: 'Escanteios',
     cartoes_amarelos: 'Cartões Amarelos',
@@ -52,18 +52,27 @@ function MercadoCard({ nome, mercado }: { nome: string; mercado: { media_esperad
     return (
       <div className="bg-[#0d1117] border border-[#21262d] rounded-xl p-5 opacity-40">
         <div className="text-[#8b949e] text-xs font-semibold uppercase tracking-wide mb-1">{icons[nome]} {labels[nome] ?? nome}</div>
-        <div className="text-[#484f58] text-sm">Dados insuficientes</div>
+        <div className="text-[#484f58] text-sm">Sem base de dados</div>
       </div>
     )
   }
 
   return (
-    <div className="bg-[#0d1117] border border-[#30363d] rounded-xl p-5">
-      <div className="text-[#8b949e] text-xs font-semibold uppercase tracking-wide mb-3">{icons[nome]} {labels[nome] ?? nome}</div>
-      <div className="text-3xl font-black text-[#e6edf3] mb-1 tabular-nums">{mercado.media_esperada}</div>
-      <div className="text-[#484f58] text-xs mb-4">
-        IC 80%: {mercado.intervalo_80pct[0]}–{mercado.intervalo_80pct[1]}
+    <div className={`bg-[#0d1117] border rounded-xl p-5 ${mercado.parcial ? 'border-[#d2992240]' : 'border-[#30363d]'}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[#8b949e] text-xs font-semibold uppercase tracking-wide">{icons[nome]} {labels[nome] ?? nome}</div>
+        {mercado.parcial
+          ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#d299221a] text-[#d29922] border border-[#d2992230]" title={mercado.nota}>ESTIMATIVA</span>
+          : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#3fb9501a] text-[#3fb950] border border-[#3fb95030]">DADO REAL</span>}
       </div>
+      <div className="text-3xl font-black text-[#e6edf3] mb-1 tabular-nums">{mercado.media_esperada}</div>
+      <div className="text-[#484f58] text-xs mb-1">esperado no jogo · faixa provável {mercado.intervalo_80pct[0]}–{mercado.intervalo_80pct[1]}</div>
+      {mercado.parcial && (
+        <div className="text-[#d29922] text-[11px] mb-3 leading-snug">
+          ⚠ Um time sem histórico — usamos a média do torneio. Confie na direção, não no número exato.
+        </div>
+      )}
+      {!mercado.parcial && <div className="mb-3" />}
       <div className="space-y-2">
         {Object.entries(mercado.prob_linhas).map(([linha, prob]) => (
           <div key={linha} className="flex items-center gap-2">
@@ -222,6 +231,19 @@ export default function AnaliseCompletaPage() {
                 probE={analise.previsao.prob_empate}
                 probV={analise.previsao.prob_vitoria_v}
               />
+
+              {/* Explicação do cálculo */}
+              <div className="mt-5 text-xs text-[#8b949e] bg-[#0d1117] border border-[#21262d] rounded-lg px-4 py-3 leading-relaxed">
+                <span className="text-[#58a6ff] font-semibold">Como ler:</span> são{' '}
+                <span className="text-[#c9d1d9]">probabilidades</span>, não certezas — o favorito
+                vence "na média". Calculado pelo modelo Dixon-Coles a partir do{' '}
+                <span className="text-[#c9d1d9]">rating Elo</span> de cada seleção + a{' '}
+                <span className="text-[#c9d1d9]">forma recente</span> (qualificatórias, Copa, amistosos).
+                {analise.previsao.cold_start && (
+                  <span className="text-[#d29922]"> {' '}⚠ Histórico escasso de um dos times — confiança menor.</span>
+                )}{' '}
+                Escalação, lesões e árbitro entram só no <span className="text-[#c9d1d9]">Relatório IA</span>.
+              </div>
             </div>
           </div>
 
@@ -255,10 +277,17 @@ export default function AnaliseCompletaPage() {
 
           {/* Mercados secundários */}
           <div>
-            <h2 className="text-[#e6edf3] font-bold text-base mb-4 flex items-center gap-2">
-              Mercados Secundários
-              <span className="text-xs text-[#484f58] font-normal">baseado em dados históricos</span>
-            </h2>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-[#e6edf3] font-bold text-base">Mercados Secundários</h2>
+              <div className="flex items-center gap-3 text-[11px]">
+                <span className="flex items-center gap-1.5 text-[#8b949e]">
+                  <span className="w-2 h-2 rounded-full bg-[#3fb950]" /> Dado real (os 2 times)
+                </span>
+                <span className="flex items-center gap-1.5 text-[#8b949e]">
+                  <span className="w-2 h-2 rounded-full bg-[#d29922]" /> Estimativa (1 time sem histórico)
+                </span>
+              </div>
+            </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.entries(analise.mercados).map(([k, m]) => (
                 <MercadoCard key={k} nome={k} mercado={m} />

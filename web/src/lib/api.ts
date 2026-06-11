@@ -47,6 +47,8 @@ export interface Mercado {
   prob_linhas: Record<string, number>
   intervalo_80pct: [number, number]
   ausente: boolean
+  parcial?: boolean
+  nota?: string
 }
 
 export interface AnaliseCompleta {
