@@ -132,34 +132,42 @@ class Repositorio:
 
     def upsert_jogo(self, jogo: Jogo) -> int:
         with self._conn() as conn:
-            # Deduplicação por id_externo (fontes com ID externo definido)
-            if jogo.id_externo and jogo.competicao:
-                row = conn.execute(
-                    "SELECT id FROM jogos WHERE id_externo = ? AND competicao = ?",
-                    (jogo.id_externo, jogo.competicao)
-                ).fetchone()
-                if row:
-                    conn.execute("""
-                        UPDATE jogos SET placar_mandante=?, placar_visitante=?
-                        WHERE id = ?
-                    """, (jogo.placar_mandante, jogo.placar_visitante, row["id"]))
-                    return row["id"]
-
-            # Deduplicação por combinação natural quando não há id_externo (ex: openfootball)
-            if not jogo.id_externo and jogo.competicao and jogo.time_mandante_id and jogo.time_visitante_id:
+            # 1) Chave NATURAL primeiro (competição+data+times) — robusta entre
+            #    fontes diferentes. Evita que o openfootball (sem id_externo) e o
+            #    API-Football (com id_externo) criem linhas duplicadas do mesmo jogo.
+            row = None
+            if (jogo.competicao and jogo.data
+                    and jogo.time_mandante_id and jogo.time_visitante_id):
                 row = conn.execute("""
                     SELECT id FROM jogos
                     WHERE competicao = ? AND data = ? AND time_mandante_id = ? AND time_visitante_id = ?
                 """, (jogo.competicao, jogo.data, jogo.time_mandante_id, jogo.time_visitante_id)).fetchone()
-                if row:
-                    conn.execute("""
-                        UPDATE jogos SET hora_utc=?, campo_neutro=?, fase=?, grupo=?, cidade=?,
-                                         altitude_m=?, placar_mandante=?, placar_visitante=?, fonte=?
-                        WHERE id = ?
-                    """, (jogo.hora_utc, jogo.campo_neutro, jogo.fase, jogo.grupo, jogo.cidade,
-                          jogo.altitude_m, jogo.placar_mandante, jogo.placar_visitante, jogo.fonte,
-                          row["id"]))
-                    return row["id"]
+
+            # 2) Fallback por id_externo
+            if row is None and jogo.id_externo and jogo.competicao:
+                row = conn.execute(
+                    "SELECT id FROM jogos WHERE id_externo = ? AND competicao = ?",
+                    (jogo.id_externo, jogo.competicao)
+                ).fetchone()
+
+            if row:
+                # Atualiza preservando o que já existe; preenche placar/id_externo se vierem
+                conn.execute("""
+                    UPDATE jogos SET
+                        hora_utc        = COALESCE(?, hora_utc),
+                        fase            = COALESCE(?, fase),
+                        grupo           = COALESCE(?, grupo),
+                        cidade          = COALESCE(?, cidade),
+                        altitude_m      = COALESCE(?, altitude_m),
+                        placar_mandante = COALESCE(?, placar_mandante),
+                        placar_visitante= COALESCE(?, placar_visitante),
+                        id_externo      = COALESCE(id_externo, ?),
+                        fonte           = COALESCE(fonte, ?)
+                    WHERE id = ?
+                """, (jogo.hora_utc, jogo.fase, jogo.grupo, jogo.cidade, jogo.altitude_m,
+                      jogo.placar_mandante, jogo.placar_visitante, jogo.id_externo,
+                      jogo.fonte, row["id"]))
+                return row["id"]
 
             cur = conn.execute("""
                 INSERT INTO jogos (competicao, data, hora_utc, time_mandante_id, time_visitante_id,
