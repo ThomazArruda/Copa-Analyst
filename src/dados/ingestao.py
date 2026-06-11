@@ -25,6 +25,8 @@ logger = logging.getLogger(__name__)
 COMPETICOES_FORMA = [
     "copa_2026",
     "copa_2022",
+    "amistosos_2026",
+    "recentes_2026",
     "elim_conmebol_2022",
     "elim_uefa_2024",
     "elim_concacaf_2022",
@@ -121,6 +123,13 @@ def ingestao_inicial(pular_api_football: bool = False) -> dict:
         relatorio["erros"].extend(res_stats["erros"])
     else:
         logger.info("--- [5/5] API-Football pulado (pular_api_football=True) ---")
+
+    # 6. Jogos recentes (amistosos pré-Copa) via TheSportsDB — dados mais atuais
+    logger.info("--- [6] Recentes — TheSportsDB ---")
+    try:
+        relatorio["recentes"] = ingerir_recentes_thesportsdb(repo)
+    except Exception as e:
+        relatorio["erros"].append(f"Recentes falhou: {e}")
 
     return relatorio
 
@@ -247,6 +256,104 @@ def _salvar_stats_api_football(repo: Repositorio, fixture: dict, stats: list, co
 # ---------------------------------------------------------------------------
 # Atualizar resultados Copa 2026 (rodar antes de cada análise)
 # ---------------------------------------------------------------------------
+
+def ingerir_recentes_thesportsdb(repo: Repositorio = None, desde: str = "2025-06-01") -> dict:
+    """
+    Puxa os jogos recentes (amistosos pré-Copa + outros) de cada seleção da Copa
+    2026 via TheSportsDB. Sem cota diária. Alimenta a forma recente — em especial
+    os warm-ups de maio/junho, os dados mais atuais que temos.
+    """
+    from src.dados.thesportsdb import ClienteTheSportsDB
+    repo = repo or _get_repo()
+    tsdb = ClienteTheSportsDB(repo)
+
+    # Times reais da Copa 2026 (exclui placeholders tipo 1A/W73)
+    nomes = set()
+    for j in repo.listar_jogos_copa26():
+        for tid in (j.time_mandante_id, j.time_visitante_id):
+            t = repo.buscar_time(tid)
+            if t and not (len(t.nome) <= 4 and any(ch.isdigit() for ch in t.nome)):
+                nomes.add(t.nome)
+
+    novos = 0
+    erros = []
+    for nome in sorted(nomes):
+        try:
+            tid = tsdb.buscar_id_time(nome)
+            if not tid:
+                continue
+            for e in tsdb.buscar_ultimos_jogos_time(tid):
+                data = e.get("dateEvent")
+                if not data or data < desde:
+                    continue
+                if e.get("intHomeScore") is None or e.get("strStatus") != "FT":
+                    continue
+                home = e.get("strHomeTeam"); away = e.get("strAwayTeam")
+                if not home or not away:
+                    continue
+                liga = (e.get("strLeague") or "").lower()
+                comp = "amistosos_2026" if "friendl" in liga else "recentes_2026"
+                id_home = repo.upsert_time(Time(id=None, nome=home))
+                id_away = repo.upsert_time(Time(id=None, nome=away))
+                jid = repo.upsert_jogo(Jogo(
+                    id=None, competicao=comp, data=data,
+                    hora_utc=None, time_mandante_id=id_home, time_visitante_id=id_away,
+                    campo_neutro=0, fase=None,
+                    placar_mandante=int(e["intHomeScore"]), placar_visitante=int(e["intAwayScore"]),
+                    id_externo=str(e.get("idEvent") or ""), fonte="thesportsdb",
+                ))
+                novos += 1
+        except Exception as ex:
+            erros.append(f"{nome}: {ex}")
+            logger.warning("Recentes %s falhou: %s", nome, ex)
+
+    # Auto-cura: remove qualquer duplicata (mesmo jogo já vindo das qualificatórias)
+    rem = deduplicar_jogos(repo)
+    logger.info("Recentes TheSportsDB: %d jogos upsertados, %d duplicatas limpas", novos, rem)
+    return {"upsertados": novos, "duplicatas_removidas": rem, "erros": erros}
+
+
+def deduplicar_jogos(repo: Repositorio = None) -> int:
+    """
+    Remove jogos duplicados (mesmo (data, par de times) em rótulos/fontes/orientações
+    diferentes). Mantém o que tem mais estatísticas. Idempotente. Retorna nº removidos.
+    """
+    repo = repo or _get_repo()
+    removidos = 0
+    with repo._conn() as conn:
+        grupos = conn.execute("""
+            SELECT data, MIN(time_mandante_id, time_visitante_id) a,
+                         MAX(time_mandante_id, time_visitante_id) b
+            FROM jogos
+            WHERE placar_mandante IS NOT NULL AND data IS NOT NULL AND data != ''
+              AND time_mandante_id IS NOT NULL AND time_visitante_id IS NOT NULL
+            GROUP BY data, a, b HAVING COUNT(*) > 1
+        """).fetchall()
+        for g in grupos:
+            rows = conn.execute("""
+                SELECT id FROM jogos
+                WHERE data=? AND placar_mandante IS NOT NULL
+                  AND MIN(time_mandante_id, time_visitante_id)=?
+                  AND MAX(time_mandante_id, time_visitante_id)=? ORDER BY id
+            """, (g["data"], g["a"], g["b"])).fetchall()
+            ids = [r["id"] for r in rows]
+            def ns(jid):
+                return conn.execute("SELECT COUNT(*) FROM estatisticas_jogo WHERE jogo_id=?", (jid,)).fetchone()[0]
+            survivor = max(ids, key=lambda j: (ns(j), -j))
+            for jid in ids:
+                if jid == survivor:
+                    continue
+                for s in conn.execute("SELECT id, time_id FROM estatisticas_jogo WHERE jogo_id=?", (jid,)).fetchall():
+                    ja = conn.execute("SELECT 1 FROM estatisticas_jogo WHERE jogo_id=? AND time_id=?",
+                                      (survivor, s["time_id"])).fetchone()
+                    if ja:
+                        conn.execute("DELETE FROM estatisticas_jogo WHERE id=?", (s["id"],))
+                    else:
+                        conn.execute("UPDATE estatisticas_jogo SET jogo_id=? WHERE id=?", (survivor, s["id"]))
+                conn.execute("DELETE FROM jogos WHERE id=?", (jid,))
+                removidos += 1
+    return removidos
+
 
 def atualizar_resultados_copa26() -> int:
     """
@@ -439,6 +546,17 @@ if __name__ == "__main__":
         n = atualizar_resultados_copa26()
         print(f"Copa 2026: {n} resultados atualizados")
 
+    elif cmd == "recentes":
+        print("Puxando jogos recentes (amistosos pré-Copa) via TheSportsDB...")
+        r = ingerir_recentes_thesportsdb(_get_repo())
+        print(f"  upsertados: {r['upsertados']} | duplicatas removidas: {r['duplicatas_removidas']}")
+        if r["erros"]:
+            print(f"  erros: {len(r['erros'])}")
+
+    elif cmd == "dedup":
+        n = deduplicar_jogos(_get_repo())
+        print(f"Duplicatas removidas: {n}")
+
     elif cmd == "stats":
         print("Coletando apenas stats da API-Football (cache-first, aborta ao bater 100/dia)...")
         res = coletar_stats_api_football(_get_repo())
@@ -477,4 +595,4 @@ if __name__ == "__main__":
         if len(jogos) > 20:
             print(f"  ... e mais {len(jogos) - 20} jogos")
     else:
-        print("Uso: python -m src.dados.ingestao [inicial|stats|atualizar|listar|jogo <id>]")
+        print("Uso: python -m src.dados.ingestao [inicial|stats|recentes|dedup|atualizar|listar|jogo <id>]")

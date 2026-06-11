@@ -12,7 +12,9 @@ from src.db.repositorio import Repositorio
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.thesportsdb.com/api/v1/json/3"
-PAUSE = 0.5
+PAUSE = 1.6        # free tier ~30 req/min → ~2s; 1.6 com margem
+RETRY_429 = 3
+ESPERA_429 = 8.0
 
 COPA_2026_LEAGUE_ID = 4429
 COPA_2026_SEASON = 2026
@@ -29,19 +31,27 @@ class ClienteTheSportsDB:
                 return cached
 
         url = f"{BASE_URL}{endpoint}"
-        try:
-            r = requests.get(url, params=params, timeout=15)
-            time.sleep(PAUSE)
-            if r.status_code != 200:
-                logger.warning("TheSportsDB HTTP %s: %s", r.status_code, endpoint)
+        for tentativa in range(RETRY_429 + 1):
+            try:
+                r = requests.get(url, params=params, timeout=15)
+                time.sleep(PAUSE)
+                if r.status_code == 429:
+                    if tentativa < RETRY_429:
+                        time.sleep(ESPERA_429)
+                        continue
+                    logger.warning("TheSportsDB 429 persistente: %s", endpoint)
+                    return None
+                if r.status_code != 200:
+                    logger.warning("TheSportsDB HTTP %s: %s", r.status_code, endpoint)
+                    return None
+                data = r.json()
+                if usar_cache:
+                    self.repo.cache_set("thesportsdb", endpoint, params, data)
+                return data
+            except Exception as e:
+                logger.error("TheSportsDB exceção: %s | %s", e, endpoint)
                 return None
-            data = r.json()
-            if usar_cache:
-                self.repo.cache_set("thesportsdb", endpoint, params, data)
-            return data
-        except Exception as e:
-            logger.error("TheSportsDB exceção: %s | %s", e, endpoint)
-            return None
+        return None
 
     def buscar_resultados_copa26(self) -> list[dict]:
         """

@@ -25,4 +25,7 @@ Log "--- atualizar resultados Copa 2026 ---"
 Log "--- coletar stats (API-Football, cache-first, aborta ao bater 100/dia) ---"
 & $py -m src.dados.ingestao stats *>> $log
 
+Log "--- jogos recentes / amistosos (TheSportsDB) ---"
+& $py -m src.dados.ingestao recentes *>> $log
+
 Log "=== Ingestão diária concluída ==="
