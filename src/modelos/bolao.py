@@ -38,12 +38,13 @@ def _carregar(repo: Repositorio) -> dict:
     dc = DixonColes(repo)
     with repo._conn() as conn:
         fixtures = conn.execute("""
-            SELECT id, fase, grupo, campo_neutro, time_mandante_id, time_visitante_id
+            SELECT id, fase, grupo, campo_neutro, time_mandante_id, time_visitante_id,
+                   placar_mandante, placar_visitante
             FROM jogos WHERE competicao='copa_2026' ORDER BY id
         """).fetchall()
 
     grupos = defaultdict(list)        # 'A' -> [team_id,...]
-    jogos_grupo = []                  # (grupo, home_id, away_id, campo_neutro)
+    jogos_grupo = []                  # (grupo, home_id, away_id, campo_neutro, placar_m|None, placar_v|None)
     mata = {}                         # num -> dict(fase, home_ph, away_ph, neutro)
     placeholders = {}                 # team_id -> nome ('1A','W73',...)
     nomes = {}                        # team_id -> nome real (para placeholders, o próprio)
@@ -62,7 +63,8 @@ def _carregar(repo: Repositorio) -> dict:
                 for tid in (f["time_mandante_id"], f["time_visitante_id"]):
                     if tid not in grupos[g]:
                         grupos[g].append(tid)
-                jogos_grupo.append((g, f["time_mandante_id"], f["time_visitante_id"], f["campo_neutro"]))
+                jogos_grupo.append((g, f["time_mandante_id"], f["time_visitante_id"], f["campo_neutro"],
+                                    f["placar_mandante"], f["placar_visitante"]))
         elif fase in FASES_MATA_MATA:
             mata[num] = {
                 "fase": FASES_MATA_MATA[fase],
@@ -152,9 +154,12 @@ def _simular_uma(est: dict, rng) -> dict:
 
     # --- Fase de grupos ---
     tab = {g: {tid: [0, 0, 0] for tid in ids} for g, ids in est["grupos"].items()}  # pts, gd, gf
-    for g, hid, aid, neutro in est["jogos_grupo"]:
-        lam, mu = _lambdas(params, hid, aid, neutro)
-        gh, ga = int(poisson(lam)), int(poisson(mu))
+    for g, hid, aid, neutro, pm, pv in est["jogos_grupo"]:
+        if pm is not None and pv is not None:
+            gh, ga = int(pm), int(pv)            # jogo já disputado → resultado real travado
+        else:
+            lam, mu = _lambdas(params, hid, aid, neutro)
+            gh, ga = int(poisson(lam)), int(poisson(mu))
         th, ta = tab[g][hid], tab[g][aid]
         th[1] += gh - ga; th[2] += gh; ta[1] += ga - gh; ta[2] += ga
         if gh > ga: th[0] += 3
@@ -323,10 +328,15 @@ def bracket_provavel(repo: Repositorio = None) -> dict:
 
     # --- Grupos: pontos esperados ---
     pts = {g: {tid: 0.0 for tid in ids} for g, ids in est["grupos"].items()}
-    for g, hid, aid, neutro in est["jogos_grupo"]:
-        pw, pe, pl = _grid_1x2(params, hid, aid, neutro)
-        pts[g][hid] += 3 * pw + pe
-        pts[g][aid] += 3 * pl + pe
+    for g, hid, aid, neutro, pm, pv in est["jogos_grupo"]:
+        if pm is not None and pv is not None:        # jogo já disputado → pontos reais
+            if pm > pv: pts[g][hid] += 3
+            elif pv > pm: pts[g][aid] += 3
+            else: pts[g][hid] += 1; pts[g][aid] += 1
+        else:                                         # jogo futuro → pontos esperados
+            pw, pe, pl = _grid_1x2(params, hid, aid, neutro)
+            pts[g][hid] += 3 * pw + pe
+            pts[g][aid] += 3 * pl + pe
 
     def elo(tid):
         return params[tid][3]

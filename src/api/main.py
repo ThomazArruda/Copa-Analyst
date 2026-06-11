@@ -88,11 +88,13 @@ def _semear_banco():
     # banco é efêmero e volta ao seed quando a instância dorme/reinicia.
     import threading
     def _pull_resultados():
+        global _bolao_cache
         try:
             from src.dados.ingestao import atualizar_resultados_copa26
             n = atualizar_resultados_copa26()
             if n:
                 logger.warning("Startup: %d resultados da Copa 2026 atualizados", n)
+            _bolao_cache = None  # recalcula o bolão com os resultados puxados no boot
         except Exception:
             logger.exception("Startup: falha ao puxar resultados")
     threading.Thread(target=_pull_resultados, daemon=True).start()
