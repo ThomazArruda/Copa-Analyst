@@ -60,6 +60,9 @@ RHO                 = -0.13   # parâmetro de dependência Dixon-Coles
 LOG_MEDIA_GOLS      = math.log(1.30)  # ln(média gols/time/jogo em Copas)
 ELO_SCALE           = 400.0   # Elo → parâmetro log-gols (mesmo da fórmula Elo)
 MAX_GOLS            = 8       # truncamento da matriz de placares
+GOLS_MIN            = 0.55    # piso realista de gols/jogo (evita defesa "impenetrável")
+GOLS_MAX            = 3.20    # teto realista de gols/jogo (evita ataque absurdo)
+PARAM_MAX           = 0.90    # trava de |alpha|,|beta| (≈ o que os melhores têm)
 
 # Anfitriões Copa 2026 — HA aplicado APENAS para eles em casa (PRD 7.1)
 ANFITRIOES = {"Canada", "United States", "Mexico"}
@@ -170,9 +173,14 @@ class DixonColes:
         media_pro    = sum(g * p for g, p in zip(gols_pro,    pesos)) / soma_pesos
         media_contra = sum(g * p for g, p in zip(gols_contra, pesos)) / soma_pesos
 
-        # Parâmetros observados em log-space centrado
-        alpha_obs = math.log(max(media_pro,   0.05)) - LOG_MEDIA_GOLS
-        beta_obs  = math.log(max(media_contra, 0.05)) - LOG_MEDIA_GOLS
+        # Clampar as taxas observadas a uma faixa realista de gols/jogo ANTES do log.
+        # Sem isso, quem tomou ~0 gols (goleadas intra-confederação) vira uma defesa
+        # impenetrável (beta explode) e quem goleou minnows vira um ataque absurdo.
+        media_pro    = min(max(media_pro,    GOLS_MIN), GOLS_MAX)
+        media_contra = min(max(media_contra, GOLS_MIN), GOLS_MAX)
+
+        alpha_obs = math.log(media_pro)    - LOG_MEDIA_GOLS
+        beta_obs  = math.log(media_contra) - LOG_MEDIA_GOLS
         beta_obs  = -beta_obs  # menor concessão = maior defesa
 
         # n efetivo = soma dos pesos. Shrinkage decai com mais dados, mas nunca
@@ -182,6 +190,10 @@ class DixonColes:
 
         alpha = s * alpha_prior + (1 - s) * alpha_obs
         beta  = s * beta_prior  + (1 - s) * beta_obs
+
+        # Trava de segurança: nenhum parâmetro extrapola o que os melhores times têm
+        alpha = max(-PARAM_MAX, min(PARAM_MAX, alpha))
+        beta  = max(-PARAM_MAX, min(PARAM_MAX, beta))
 
         return ParametrosTime(
             nome=time.nome, elo=elo,

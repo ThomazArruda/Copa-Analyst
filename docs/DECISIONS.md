@@ -223,12 +223,39 @@ do México + prior para a SA.
 
 ---
 
+## Decisão 13 — Trava de parâmetros (anti-explosão) + Bolão ✅ DECIDIDO
+
+**Bug encontrado ao construir o Bolão:** times da CAF (Costa do Marfim, Cabo Verde)
+apareciam como favoritos ao título. Causa: tomaram ~0 gols em qualificatórias intra-
+confederação → o piso de 0.05 gol + log transformavam isso numa defesa "impenetrável"
+(beta explodia: Costa do Marfim beta=1.47 vs França 0.70). A forma a 40% amplificava.
+
+**Correção (`src/modelos/dixon_coles.py`):** clampar as taxas observadas a uma faixa
+realista antes do log, e travar |alpha|,|beta|:
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| `GOLS_MIN` | 0.55 | piso de gols/jogo (impede defesa impenetrável) |
+| `GOLS_MAX` | 3.20 | teto de gols/jogo (impede ataque absurdo) |
+| `PARAM_MAX` | 0.90 | trava de \|alpha\|,\|beta\| (≈ o que os melhores têm) |
+
+Afeta **todas** as previsões (melhora): favoritos ao título passaram a ser Espanha,
+Inglaterra, França, Holanda, Argentina — coerente com o Elo. Validado.
+
+**Bolão (`src/modelos/bolao.py`, `/api/bolao`, aba `Bolao.tsx`):** simulação Monte
+Carlo do torneio inteiro (10k sims). Chaveamento lido das fixtures (placeholders
+`1A`/`2B`/`3X`/`W{n}`/`L{n}`; número da partida = `id - 28`; 8 melhores terceiros por
+matching das vagas). Mostra probabilidades + palpite cravado. Aba puramente aditiva.
+
+---
+
 ## Log de Mudanças
 
 | Data | Decisão | O quê mudou |
 |---|---|---|
 | 2026-06-04 | Todas | Criação inicial do documento |
 | 2026-06-09 | 12 | Dixon-Coles usa todos os jogos (não só Copa) com piso de shrinkage; mercados usam prior global para lados sem dado. Zero desperdício de dados. |
+| 2026-06-11 | 13 | Trava de gols/params (anti-explosão de beta da CAF) + aba Bolão (Monte Carlo do torneio). |
 | 2026-06-04 | 1 | Decidido: eloratings.net + Elo de openfootball. Club Elo descartado (não cobre seleções nacionais) |
 | 2026-06-04 | 2 | Decidido: free tier bloqueia 2025/2026. Copa 2026 via openfootball. Stats disponíveis para 2022-2024 |
 | 2026-06-04 | 11 | Decidido: arquitetura de fontes 100% gratuita (ver Decisão 11) |

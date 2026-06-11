@@ -5,6 +5,7 @@ import AnaliseCompleta from './pages/AnaliseCompleta'
 import Relatorio from './pages/Relatorio'
 import Calibracao from './pages/Calibracao'
 import AtualizarDados from './pages/AtualizarDados'
+import Bolao from './pages/Bolao'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
         <Route path="/relatorio" element={<Relatorio />} />
         <Route path="/calibracao" element={<Calibracao />} />
         <Route path="/atualizar" element={<AtualizarDados />} />
+        <Route path="/bolao" element={<Bolao />} />
       </Route>
     </Routes>
   )

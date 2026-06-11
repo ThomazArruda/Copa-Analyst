@@ -155,6 +155,28 @@ export interface CalibracaoResponse {
   pontos_calibracao?: PontoCalibracao[]
 }
 
+export interface BolaoGrupoLinha {
+  time: string
+  pts_medio: number
+  p_1o: number
+  p_avanca: number
+  cravado: string
+}
+export interface BolaoFavorito {
+  time: string
+  p_campeao: number
+  p_final: number
+  p_semi: number
+  p_quartas: number
+  p_oitavas: number
+  p_avanca: number
+}
+export interface BolaoResponse {
+  n_simulacoes: number
+  grupos: Record<string, BolaoGrupoLinha[]>
+  favoritos: BolaoFavorito[]
+}
+
 export const api = {
   jogos: (data?: string) => get<Jogo[]>(data ? `/jogos?data=${data}` : '/jogos'),
   datas: () => get<string[]>('/jogos/datas'),
@@ -171,4 +193,5 @@ export const api = {
       `/jogos/${jogoId}/gerar-relatorio${modelo ? `?modelo=${modelo}` : ''}`
     ),
   marcarOficial: (relatorioId: number) => post<{ ok: boolean; motivo?: string }>(`/relatorios/${relatorioId}/marcar-oficial`),
+  bolao: () => get<BolaoResponse>('/bolao'),
 }

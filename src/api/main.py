@@ -273,6 +273,23 @@ def healthz():
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# /api/bolao — simulação Monte Carlo do torneio (grupos + mata-mata)
+# ---------------------------------------------------------------------------
+
+_bolao_cache = None
+
+@app.get("/api/bolao")
+def bolao(refresh: bool = False, n: int = 10000):
+    """Simula o torneio inteiro a partir das previsões do modelo. Cacheado
+    em memória (recalcula com ?refresh=true)."""
+    global _bolao_cache
+    if _bolao_cache is None or refresh:
+        from src.modelos.bolao import simular_torneio
+        _bolao_cache = simular_torneio(get_repo(), n=n)
+    return _bolao_cache
+
+
 @app.get("/api/status")
 def status_banco():
     import sqlite3
