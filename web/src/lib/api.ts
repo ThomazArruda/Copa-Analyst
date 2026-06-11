@@ -49,6 +49,10 @@ export interface Mercado {
   ausente: boolean
   parcial?: boolean
   nota?: string
+  valor_m?: number
+  valor_v?: number
+  prior_m?: boolean
+  prior_v?: boolean
 }
 
 export interface AnaliseCompleta {

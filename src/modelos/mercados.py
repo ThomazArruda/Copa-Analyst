@@ -33,6 +33,11 @@ class PrevisaoMercadoSecundario:
     ausente: bool = False      # True = não há NENHUMA base (nem prior global)
     parcial: bool = False      # True = um ou ambos os lados usaram prior global
     nota: str = ""             # explicação (ex.: "Marrocos via média global")
+    # Decomposição por time (o total é a soma): ex. 13 (mandante) + 7 (visitante)
+    valor_m: float = 0.0       # parcela do mandante
+    valor_v: float = 0.0       # parcela do visitante
+    prior_m: bool = False      # True = parcela do mandante veio do prior global
+    prior_v: bool = False      # True = parcela do visitante veio do prior global
 
 
 def _calcular_distribuicao(media: float, linhas: list[float]) -> dict:
@@ -84,7 +89,7 @@ def _lado(medias: dict, campo: str, globais: dict, nome: str):
     return None, False, None
 
 
-def _montar(mercado, valor_total, linhas, usou_m, usou_v, rot_m, rot_v,
+def _montar(mercado, valor_total, vm, vv, linhas, usou_m, usou_v, rot_m, rot_v,
             n_m, n_v) -> PrevisaoMercadoSecundario:
     parcial = usou_m or usou_v
     notas = [r for r in (rot_m, rot_v) if r]
@@ -96,6 +101,8 @@ def _montar(mercado, valor_total, linhas, usou_m, usou_v, rot_m, rot_v,
         n_jogos_m=n_m, n_jogos_v=n_v,
         ausente=False, parcial=parcial,
         nota="; ".join(notas),
+        valor_m=round(vm, 2), valor_v=round(vv, 2),
+        prior_m=usou_m, prior_v=usou_v,
     )
 
 
@@ -108,7 +115,7 @@ def prever_escanteios(medias_m, medias_v, globais=None) -> PrevisaoMercadoSecund
     vv, uv, rv = _lado(medias_v, "escanteios", globais, "visitante")
     if vm is None or vv is None:
         return PrevisaoMercadoSecundario(mercado="escanteios", media_esperada=0.0, ausente=True)
-    return _montar("escanteios", vm + vv, [7.5, 8.5, 9.5, 10.5, 11.5],
+    return _montar("escanteios", vm + vv, vm, vv, [7.5, 8.5, 9.5, 10.5, 11.5],
                    um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
@@ -117,8 +124,9 @@ def prever_cartoes_amarelos(medias_m, medias_v, fator_arbitro=None, globais=None
     vv, uv, rv = _lado(medias_v, "cartoes_amarelos", globais, "visitante")
     if vm is None or vv is None:
         return PrevisaoMercadoSecundario(mercado="cartoes_amarelos", media_esperada=0.0, ausente=True)
+    esc = fator_arbitro or 1.0
     media = _media_com_ajuste_arbitro(vm + vv, fator_arbitro)
-    return _montar("cartoes_amarelos", media, [2.5, 3.5, 4.5, 5.5],
+    return _montar("cartoes_amarelos", media, vm * esc, vv * esc, [2.5, 3.5, 4.5, 5.5],
                    um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
@@ -127,8 +135,9 @@ def prever_faltas(medias_m, medias_v, fator_arbitro=None, globais=None) -> Previ
     vv, uv, rv = _lado(medias_v, "faltas", globais, "visitante")
     if vm is None or vv is None:
         return PrevisaoMercadoSecundario(mercado="faltas", media_esperada=0.0, ausente=True)
+    esc = fator_arbitro or 1.0
     media = _media_com_ajuste_arbitro(vm + vv, fator_arbitro)
-    return _montar("faltas", media, [20.5, 24.5, 28.5],
+    return _montar("faltas", media, vm * esc, vv * esc, [20.5, 24.5, 28.5],
                    um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 
@@ -138,12 +147,12 @@ def prever_chutes(medias_m, medias_v, lado="total", globais=None) -> PrevisaoMer
     if vm is None and vv is None:
         return PrevisaoMercadoSecundario(mercado="chutes_time", media_esperada=0.0, ausente=True)
     if lado == "mandante":
-        return _montar("chutes_time", vm or 0, [3.5, 5.5, 7.5], um, False, rm, None,
+        return _montar("chutes_time", vm or 0, vm or 0, 0.0, [3.5, 5.5, 7.5], um, False, rm, None,
                        medias_m.get("_n", 0), 0)
     if lado == "visitante":
-        return _montar("chutes_time", vv or 0, [3.5, 5.5, 7.5], False, uv, None, rv,
+        return _montar("chutes_time", vv or 0, 0.0, vv or 0, [3.5, 5.5, 7.5], False, uv, None, rv,
                        0, medias_v.get("_n", 0))
-    return _montar("chutes_time", (vm or 0) + (vv or 0), [10.5, 13.5, 16.5, 19.5],
+    return _montar("chutes_time", (vm or 0) + (vv or 0), vm or 0, vv or 0, [10.5, 13.5, 16.5, 19.5],
                    um, uv, rm, rv, medias_m.get("_n", 0), medias_v.get("_n", 0))
 
 

@@ -34,7 +34,7 @@ function FormaRow({ data, mandante, visitante, placar_m, placar_v, competicao }:
   )
 }
 
-function MercadoCard({ nome, mercado }: { nome: string; mercado: import('../lib/api').Mercado }) {
+function MercadoCard({ nome, mercado, mandante, visitante }: { nome: string; mercado: import('../lib/api').Mercado; mandante: string; visitante: string }) {
   const labels: Record<string, string> = {
     escanteios: 'Escanteios',
     cartoes_amarelos: 'Cartões Amarelos',
@@ -66,13 +66,25 @@ function MercadoCard({ nome, mercado }: { nome: string; mercado: import('../lib/
           : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#3fb9501a] text-[#3fb950] border border-[#3fb95030]">DADO REAL</span>}
       </div>
       <div className="text-3xl font-black text-[#e6edf3] mb-1 tabular-nums">{mercado.media_esperada}</div>
-      <div className="text-[#484f58] text-xs mb-1">esperado no jogo · faixa provável {mercado.intervalo_80pct[0]}–{mercado.intervalo_80pct[1]}</div>
-      {mercado.parcial && (
-        <div className="text-[#d29922] text-[11px] mb-3 leading-snug">
-          ⚠ Um time sem histórico — usamos a média do torneio. Confie na direção, não no número exato.
+      <div className="text-[#484f58] text-xs mb-2">esperado no jogo · faixa provável {mercado.intervalo_80pct[0]}–{mercado.intervalo_80pct[1]}</div>
+
+      {/* Decomposição por time: total = parcela mandante + parcela visitante */}
+      {(mercado.valor_m !== undefined && mercado.valor_v !== undefined) && (
+        <div className="flex items-stretch gap-1.5 mb-2 text-[11px]">
+          <div className={`flex-1 rounded-md px-2 py-1.5 border ${mercado.prior_m ? 'bg-[#d299220d] border-[#d2992230]' : 'bg-[#161b22] border-[#30363d]'}`}>
+            <div className="text-[#e6edf3] font-bold tabular-nums">{mercado.valor_m}</div>
+            <div className="text-[#8b949e] truncate">{mandante}{mercado.prior_m && <span className="text-[#d29922]"> *</span>}</div>
+          </div>
+          <div className="flex items-center text-[#484f58] font-bold">+</div>
+          <div className={`flex-1 rounded-md px-2 py-1.5 border ${mercado.prior_v ? 'bg-[#d299220d] border-[#d2992230]' : 'bg-[#161b22] border-[#30363d]'}`}>
+            <div className="text-[#e6edf3] font-bold tabular-nums">{mercado.valor_v}</div>
+            <div className="text-[#8b949e] truncate">{visitante}{mercado.prior_v && <span className="text-[#d29922]"> *</span>}</div>
+          </div>
         </div>
       )}
-      {!mercado.parcial && <div className="mb-3" />}
+      {(mercado.prior_m || mercado.prior_v) && (
+        <div className="text-[#d29922] text-[10px] mb-2">* sem histórico — média do torneio</div>
+      )}
       <div className="space-y-2">
         {Object.entries(mercado.prob_linhas).map(([linha, prob]) => (
           <div key={linha} className="flex items-center gap-2">
@@ -290,7 +302,7 @@ export default function AnaliseCompletaPage() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {Object.entries(analise.mercados).map(([k, m]) => (
-                <MercadoCard key={k} nome={k} mercado={m} />
+                <MercadoCard key={k} nome={k} mercado={m} mandante={analise.mandante.nome} visitante={analise.visitante.nome} />
               ))}
             </div>
           </div>

@@ -248,6 +248,10 @@ def analise_completa(jogo_id: int):
                     "ausente": m.ausente,
                     "parcial": getattr(m, "parcial", False),
                     "nota": getattr(m, "nota", ""),
+                    "valor_m": getattr(m, "valor_m", 0.0),
+                    "valor_v": getattr(m, "valor_v", 0.0),
+                    "prior_m": getattr(m, "prior_m", False),
+                    "prior_v": getattr(m, "prior_v", False),
                 }
                 for k, m in mercados.items()
             },
