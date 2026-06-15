@@ -277,6 +277,7 @@ def ingerir_recentes_thesportsdb(repo: Repositorio = None, desde: str = "2025-06
 
     novos = 0
     erros = []
+    idx_times = _indice_times_norm(repo)  # resolução por nome normalizado (anti-clone)
     for nome in sorted(nomes):
         try:
             tid = tsdb.buscar_id_time(nome)
@@ -293,8 +294,8 @@ def ingerir_recentes_thesportsdb(repo: Repositorio = None, desde: str = "2025-06
                     continue
                 liga = (e.get("strLeague") or "").lower()
                 comp = "amistosos_2026" if "friendl" in liga else "recentes_2026"
-                id_home = repo.upsert_time(Time(id=None, nome=home))
-                id_away = repo.upsert_time(Time(id=None, nome=away))
+                id_home = _resolver_time_id(repo, home, idx_times)
+                id_away = _resolver_time_id(repo, away, idx_times)
                 jid = repo.upsert_jogo(Jogo(
                     id=None, competicao=comp, data=data,
                     hora_utc=None, time_mandante_id=id_home, time_visitante_id=id_away,
@@ -355,47 +356,216 @@ def deduplicar_jogos(repo: Repositorio = None) -> int:
     return removidos
 
 
+def _norm_nome(s: str) -> str:
+    """Normaliza nome de time para casamento robusto entre fontes:
+    minúsculas, sem acentos, sem 'and', só alfanumérico. Ex.:
+    'Bosnia & Herzegovina' == 'Bosnia-Herzegovina' == 'bosnia herzegovina'."""
+    if not s:
+        return ""
+    import unicodedata
+    import re
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    s = s.lower()
+    s = re.sub(r"\b(and)\b", " ", s)
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
+
+
+def _dist_data(d1: str, d2: str) -> int:
+    """Distância em dias entre duas datas ISO (absorve o deslocamento de fuso
+    entre a data local do openfootball e a data UTC da TheSportsDB)."""
+    from datetime import date as _date
+    try:
+        a = _date.fromisoformat((d1 or "")[:10])
+        b = _date.fromisoformat((d2 or "")[:10])
+        return abs((a - b).days)
+    except Exception:
+        return 9999
+
+
+def _indice_times_norm(repo: Repositorio) -> dict:
+    """Mapa nome-normalizado -> lista de times existentes (para resolução robusta)."""
+    idx: dict = {}
+    for t in repo.listar_times():
+        idx.setdefault(_norm_nome(t.nome), []).append(t)
+    return idx
+
+
+def _resolver_time_id(repo: Repositorio, nome: str, idx: dict = None) -> int:
+    """Resolve um nome de time a um id existente por nome NORMALIZADO, preferindo
+    o time canônico (o que tem rating_prior). Só cria um time novo se nenhum casar.
+    Evita clones como 'Bosnia-Herzegovina' vs 'Bosnia & Herzegovina'."""
+    n = _norm_nome(nome)
+    cands = idx.get(n) if idx is not None else [
+        t for t in repo.listar_times() if _norm_nome(t.nome) == n
+    ]
+    if cands:
+        cands = sorted(cands, key=lambda t: (t.rating_prior is None, t.id))
+        return cands[0].id
+    return repo.upsert_time(Time(id=None, nome=nome))
+
+
+def fundir_times_clones(repo: Repositorio) -> int:
+    """Auto-cura de times: funde cada time SEM rating cujo nome normalizado bate com
+    um time COM rating (o canônico) — ex.: 'Bosnia-Herzegovina' → 'Bosnia & Herzegovina'.
+    Reaponta jogos e estatísticas para o canônico e apaga o clone. Idempotente.
+    Garante que a forma recente não fique dividida entre identidades duplicadas, mesmo
+    após um reseed do deploy. Retorna o número de clones fundidos."""
+    canon: dict = {}
+    clones: list = []
+    for t in repo.listar_times():
+        n = _norm_nome(t.nome)
+        if t.rating_prior is not None:
+            canon.setdefault(n, t)
+    for t in repo.listar_times():
+        if t.rating_prior is None:
+            alvo = canon.get(_norm_nome(t.nome))
+            if alvo and alvo.id != t.id:
+                clones.append((t.id, alvo.id))
+
+    if not clones:
+        return 0
+
+    with repo._conn() as conn:
+        for clone_id, canon_id in clones:
+            for s in conn.execute(
+                "SELECT id, jogo_id FROM estatisticas_jogo WHERE time_id = ?", (clone_id,)
+            ).fetchall():
+                ja = conn.execute(
+                    "SELECT 1 FROM estatisticas_jogo WHERE jogo_id = ? AND time_id = ?",
+                    (s["jogo_id"], canon_id),
+                ).fetchone()
+                if ja:
+                    conn.execute("DELETE FROM estatisticas_jogo WHERE id = ?", (s["id"],))
+                else:
+                    conn.execute(
+                        "UPDATE estatisticas_jogo SET time_id = ? WHERE id = ?",
+                        (canon_id, s["id"]),
+                    )
+            conn.execute(
+                "UPDATE jogos SET time_mandante_id = ? WHERE time_mandante_id = ?",
+                (canon_id, clone_id),
+            )
+            conn.execute(
+                "UPDATE jogos SET time_visitante_id = ? WHERE time_visitante_id = ?",
+                (canon_id, clone_id),
+            )
+            conn.execute("DELETE FROM times WHERE id = ?", (clone_id,))
+
+    deduplicar_jogos(repo)  # limpa jogos que viraram duplicados após o reaponte
+    logger.info("Times: %d clone(s) fundido(s) no canônico", len(clones))
+    return len(clones)
+
+
 def atualizar_resultados_copa26() -> int:
     """
-    Puxa resultados mais recentes da Copa 2026 via TheSportsDB.
-    Retorna número de jogos atualizados.
+    Puxa resultados mais recentes da Copa 2026 via TheSportsDB e os grava
+    **no fixture canônico** (openfootball) — nunca cria fixtures nem times novos.
+
+    O casamento é por PAR DE TIMES NORMALIZADO (qualquer orientação), com desempate
+    pela data mais próxima. Isso é robusto contra (a) o deslocamento de fuso
+    (TheSportsDB usa data UTC; openfootball usa data local) e (b) divergências de
+    nome entre as fontes ('Bosnia-Herzegovina' vs 'Bosnia & Herzegovina'), que antes
+    geravam jogos e times duplicados. Retorna número de jogos atualizados.
     """
+    from src.dados.resultados import preencher_resultado_real_jogo
+
     repo = _get_repo()
+    fundir_times_clones(repo)  # auto-cura: funde clones antes de casar fixtures
     tsdb = ClienteTheSportsDB(repo)
     resultados = tsdb.buscar_resultados_copa26()
-    atualizados = 0
 
+    # Índice dos fixtures da Copa por par de times normalizado.
+    fixtures = []
+    for j in repo.listar_jogos_copa26():
+        tm = repo.buscar_time(j.time_mandante_id)
+        tv = repo.buscar_time(j.time_visitante_id)
+        nm = _norm_nome(tm.nome if tm else "")
+        nv = _norm_nome(tv.nome if tv else "")
+        fixtures.append({"jogo": j, "nm": nm, "nv": nv, "par": frozenset({nm, nv})})
+
+    atualizados = 0
     for evento in resultados:
-        nome_home = evento.get("strHomeTeam", "")
-        nome_away = evento.get("strAwayTeam", "")
-        if not nome_home or not nome_away:
+        ph = evento.get("intHomeScore")
+        pa = evento.get("intAwayScore")
+        if ph is None or pa is None:
+            continue
+        nh = _norm_nome(evento.get("strHomeTeam", ""))
+        na = _norm_nome(evento.get("strAwayTeam", ""))
+        par = frozenset({nh, na})
+        if len(par) != 2:
             continue
 
-        id_home = repo.upsert_time(Time(id=None, nome=nome_home))
-        id_away = repo.upsert_time(Time(id=None, nome=nome_away))
+        cands = [f for f in fixtures if f["par"] == par]
+        if not cands:
+            logger.warning(
+                "Resultado da Copa sem fixture correspondente: %s x %s — ignorado",
+                evento.get("strHomeTeam"), evento.get("strAwayTeam"),
+            )
+            continue
+        # Preferir o fixture canônico (openfootball) sobre qualquer resíduo da TheSportsDB.
+        canonicos = [f for f in cands if (f["jogo"].fonte or "") != "thesportsdb"]
+        pool = canonicos or cands
+        data_ev = evento.get("dateEvent", "")
+        alvo = min(pool, key=lambda f: _dist_data(f["jogo"].data, data_ev))
+        jogo = alvo["jogo"]
 
-        data_str = evento.get("dateEvent", "")
-        hora_str = evento.get("strTime", "")
-        hora_utc = hora_str[:5] if hora_str else None
+        # Orienta o placar conforme o mandante do fixture (não do evento).
+        if alvo["nm"] == nh:
+            pm, pv = int(ph), int(pa)
+        else:
+            pm, pv = int(pa), int(ph)
 
-        jogo = Jogo(
-            id=None,
-            competicao="copa_2026",
-            data=data_str,
-            hora_utc=hora_utc,
-            time_mandante_id=id_home,
-            time_visitante_id=id_away,
-            campo_neutro=1,
-            placar_mandante=int(evento["intHomeScore"]) if evento.get("intHomeScore") is not None else None,
-            placar_visitante=int(evento["intAwayScore"]) if evento.get("intAwayScore") is not None else None,
-            id_externo=str(evento.get("idEvent", "")),
-            fonte="thesportsdb",
-        )
-        repo.upsert_jogo(jogo)
+        # Grava o placar no fixture canônico e preenche resultado_real (relatório oficial).
+        preencher_resultado_real_jogo(jogo.id, pm, pv, repo)
         atualizados += 1
 
-    logger.info("Copa 2026: %d resultados atualizados via TheSportsDB", atualizados)
+    # Auto-cura: remove resíduos da TheSportsDB que duplicam um fixture canônico.
+    removidos = _limpar_duplicatas_copa26(repo)
+    logger.info(
+        "Copa 2026: %d resultados gravados no fixture canônico; %d duplicatas removidas",
+        atualizados, removidos,
+    )
     return atualizados
+
+
+def _limpar_duplicatas_copa26(repo: Repositorio) -> int:
+    """Remove linhas copa_2026 vindas da TheSportsDB que duplicam um fixture canônico
+    (mesmo par de times normalizado) e apaga times órfãos sem rating criados por engano.
+    Idempotente — seguro rodar a cada atualização."""
+    removidos = 0
+    jogos = repo.listar_jogos_copa26()
+    # Mapa par-normalizado -> fixtures canônicos (não-TheSportsDB)
+    canon = {}
+    for j in jogos:
+        if (j.fonte or "") == "thesportsdb":
+            continue
+        tm = repo.buscar_time(j.time_mandante_id)
+        tv = repo.buscar_time(j.time_visitante_id)
+        par = frozenset({_norm_nome(tm.nome if tm else ""), _norm_nome(tv.nome if tv else "")})
+        if len(par) == 2:
+            canon.setdefault(par, []).append(j)
+
+    with repo._conn() as conn:
+        for j in jogos:
+            if (j.fonte or "") != "thesportsdb":
+                continue
+            tm = repo.buscar_time(j.time_mandante_id)
+            tv = repo.buscar_time(j.time_visitante_id)
+            par = frozenset({_norm_nome(tm.nome if tm else ""), _norm_nome(tv.nome if tv else "")})
+            if par in canon:  # existe fixture canônico → este é resíduo
+                conn.execute("DELETE FROM estatisticas_jogo WHERE jogo_id = ?", (j.id,))
+                conn.execute("DELETE FROM jogos WHERE id = ?", (j.id,))
+                removidos += 1
+
+        # Apaga times sem rating que ficaram sem nenhum jogo referenciando-os.
+        conn.execute("""
+            DELETE FROM times
+            WHERE rating_prior IS NULL
+              AND id NOT IN (SELECT time_mandante_id FROM jogos WHERE time_mandante_id IS NOT NULL)
+              AND id NOT IN (SELECT time_visitante_id FROM jogos WHERE time_visitante_id IS NOT NULL)
+        """)
+    return removidos
 
 
 # ---------------------------------------------------------------------------
