@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from src.db.repositorio import Repositorio, Jogo, Time
 from src.dados.openfootball import IngestorOpenfootball
 from src.dados.api_football import ClienteApiFootball
-from src.dados.thesportsdb import ClienteTheSportsDB
+from src.dados.thesportsdb import ClienteTheSportsDB, COPA_2026_LEAGUE_ID
 from src.dados.wikipedia_scraper import ScraperWikipedia
 from src.modelos.rating_prior import RatingPrior
 
@@ -457,6 +457,71 @@ def fundir_times_clones(repo: Repositorio) -> int:
     return len(clones)
 
 
+def _evento_eh_copa_ft(e: dict) -> bool:
+    """True se o evento do TheSportsDB é um jogo da Copa, encerrado e com placar."""
+    if e.get("intHomeScore") is None or e.get("intAwayScore") is None:
+        return False
+    if (e.get("strStatus") or "") != "FT":
+        return False
+    liga = (e.get("strLeague") or "").lower()
+    return "world cup" in liga or str(e.get("idLeague") or "") == str(COPA_2026_LEAGUE_ID)
+
+
+def _coletar_resultados_tsdb(repo: Repositorio, tsdb, fixtures: list) -> list[dict]:
+    """Reúne os resultados FT da Copa de MÚLTIPLOS endpoints do TheSportsDB.
+
+    Necessário porque o free tier trunca cada endpoint por-liga (~5 jogos):
+    `eventsseason`/`eventsround` não trazem o torneio todo. A cobertura completa
+    vem de `eventslast` por seleção — cada jogo disputado aparece nos últimos
+    jogos de pelo menos um dos dois times. Faz a união e deduplica por idEvent.
+    Só consulta seleções cujo fixture já começou (data <= hoje) e ainda está sem
+    placar, para não desperdiçar requisições (cota TheSportsDB)."""
+    from datetime import date as _date
+
+    eventos: dict = {}
+
+    def _add(e: dict):
+        if not _evento_eh_copa_ft(e):
+            return
+        chave = e.get("idEvent") or (
+            f"{e.get('dateEvent')}|{e.get('strHomeTeam')}|{e.get('strAwayTeam')}"
+        )
+        eventos[chave] = e
+
+    # 1) Endpoints por liga, baratos (truncados pelo free tier, mas complementares):
+    #    season pega os primeiros jogos; pastleague pega o(s) mais recente(s).
+    for e in tsdb.buscar_resultados_copa26():
+        _add(e)
+    for e in tsdb.buscar_passados_liga():
+        _add(e)
+
+    # 2) Por seleção: só as que têm jogo já iniciado e ainda sem placar.
+    hoje = _date.today().isoformat()
+    nomes: set = set()
+    for f in fixtures:
+        j = f["jogo"]
+        if j.placar_mandante is not None:
+            continue
+        if (j.data or "") > hoje:
+            continue
+        for nome in (f["nome_m"], f["nome_v"]):
+            # ignora placeholders de chaveamento (ex.: '1A', 'W73', '3X')
+            if nome and not (len(nome) <= 4 and any(c.isdigit() for c in nome)):
+                nomes.add(nome)
+
+    for nome in sorted(nomes):
+        try:
+            tid = tsdb.buscar_id_time(nome)
+            if not tid:
+                continue
+            for e in tsdb.buscar_ultimos_jogos_time(tid):
+                _add(e)
+        except Exception:
+            logger.warning("Falha ao buscar últimos jogos de %s", nome)
+
+    return list(eventos.values())
+
+
 def atualizar_resultados_copa26() -> int:
     """
     Puxa resultados mais recentes da Copa 2026 via TheSportsDB e os grava
@@ -473,7 +538,6 @@ def atualizar_resultados_copa26() -> int:
     repo = _get_repo()
     fundir_times_clones(repo)  # auto-cura: funde clones antes de casar fixtures
     tsdb = ClienteTheSportsDB(repo)
-    resultados = tsdb.buscar_resultados_copa26()
 
     # Índice dos fixtures da Copa por par de times normalizado.
     fixtures = []
@@ -482,7 +546,12 @@ def atualizar_resultados_copa26() -> int:
         tv = repo.buscar_time(j.time_visitante_id)
         nm = _norm_nome(tm.nome if tm else "")
         nv = _norm_nome(tv.nome if tv else "")
-        fixtures.append({"jogo": j, "nm": nm, "nv": nv, "par": frozenset({nm, nv})})
+        fixtures.append({
+            "jogo": j, "nm": nm, "nv": nv, "par": frozenset({nm, nv}),
+            "nome_m": tm.nome if tm else "", "nome_v": tv.nome if tv else "",
+        })
+
+    resultados = _coletar_resultados_tsdb(repo, tsdb, fixtures)
 
     atualizados = 0
     for evento in resultados:

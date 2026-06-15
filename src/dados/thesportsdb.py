@@ -72,6 +72,17 @@ class ClienteTheSportsDB:
             if e.get("intHomeScore") is not None and e.get("strStatus") == "FT"
         ]
 
+    def buscar_passados_liga(self) -> list[dict]:
+        """Últimos jogos encerrados da liga (`eventspastleague`). Sem cache.
+        O free tier trunca, mas costuma trazer o(s) jogo(s) MAIS recente(s) que
+        `eventsseason` e `eventslast` por time ainda não refletem."""
+        data = self._get(
+            "/eventspastleague.php", {"id": COPA_2026_LEAGUE_ID}, usar_cache=False
+        )
+        if not data:
+            return []
+        return data.get("events") or []
+
     def buscar_todos_fixtures_copa26(self) -> list[dict]:
         """
         Busca todos os 104 fixtures da Copa 2026 (incluindo futuros).
