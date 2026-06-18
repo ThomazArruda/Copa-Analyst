@@ -1,0 +1,60 @@
+name: Atualizar seed com resultados da Copa
+
+# Por quê: no plano free do Render o disco é efêmero — a cada restart o site
+# recarrega `deploy/seed_db/copa_analyst.db`. Para os resultados estarem SEMPRE
+# presentes ao abrir o site, este robô mantém o seed atualizado no git (o git vira
+# o "disco persistente" gratuito). Ao dar push, o Render redeploya (autoDeploy=true)
+# já com os resultados frescos. Não usa a chave da Anthropic: o pull lê só o
+# TheSportsDB (grátis, sem chave).
+
+on:
+  schedule:
+    - cron: "0 */3 * * *"   # a cada 3h (UTC) durante a Copa
+  workflow_dispatch: {}      # botão de execução manual em Actions
+
+# Sem gatilho `push`: evita loop (o commit do seed não re-dispara o workflow).
+
+permissions:
+  contents: write            # necessário para o robô dar push do seed
+
+concurrency:
+  group: atualizar-seed
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Partir do seed atual como banco vivo
+        run: |
+          mkdir -p dados
+          cp deploy/seed_db/copa_analyst.db dados/copa_analyst.db
+
+      - name: Puxar resultados da Copa (TheSportsDB)
+        run: |
+          python -c "from src.dados.ingestao import atualizar_resultados_copa26 as a; print('jogos atualizados:', a())"
+
+      - name: Regerar o seed a partir do banco vivo
+        run: python scripts/atualizar_seed.py
+
+      - name: Commit + push se o seed mudou
+        run: |
+          if git diff --quiet -- deploy/seed_db/copa_analyst.db; then
+            echo "Seed inalterado — nada a commitar."
+            exit 0
+          fi
+          git config user.name  "copa-analyst-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add deploy/seed_db/copa_analyst.db
+          git commit -m "chore(seed): resultados da Copa atualizados automaticamente"
+          git push
